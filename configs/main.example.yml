@@ -1,0 +1,18 @@
+TestBedPath: ./TestBed.yml
+TestSetPath: ./TestSet.yml
+base_dir: ../Business
+
+logger:
+  level: INFO
+  log_file: logs/app.log
+  format: "%(asctime)s - [%(levelname)s] - [%(filename)s:%(lineno)d - %(funcName)s] - %(message)s"
+  max_bytes: 31457280
+  backup_count: 3
+  console_output: true
+
+reporting:
+  report_path: reports
+  format: html
+  send_email: false
+  email_recipients:
+    - reports@example.com

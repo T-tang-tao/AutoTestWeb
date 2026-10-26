@@ -1,0 +1,5 @@
+test_cases:
+  - path: "PrisonAssessmentSystem/TestCases/Assessment/InPrison/inmate_assessment_criminal_base_info_01.py"
+    concurrent: false
+    timeout: 60
+    depends_on: []

@@ -1,0 +1,45 @@
+HuiXin:
+  host: http://127.0.0.1:30126
+  port: 30126
+  users:
+    assessment_center:
+      name: Example Assessment Center
+      password: change-me
+      role: assessment-center
+      username: example-assessment
+    criminal:
+      id: example-criminal-id
+      name: Example Criminal
+      role: criminal
+      username: example-criminal
+    doctor_police:
+      name: Example Doctor
+      password: change-me
+      role: doctor
+      username: example-doctor
+    leader_police:
+      name: Example Leader
+      password: change-me
+      role: leader
+      username: example-leader
+    prison_police:
+      name: Example Police Officer
+      password: change-me
+      role: police-officer
+      username: example-officer
+
+ficus:
+  host: http://127.0.0.1:30078
+  login_url: http://127.0.0.1:30010
+  password: change-me
+  username: example-user
+
+database:
+  host: 127.0.0.1
+  port: 3306
+  jiaxin_port: 3306
+  database: criminal_business
+  user: example-user
+  password: change-me
+
+env: local

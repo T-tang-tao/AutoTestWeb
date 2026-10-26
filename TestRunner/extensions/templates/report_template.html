@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>测试报告</title>
+    <style>
+        body {{ font-family: '微软雅黑', sans-serif; margin: 20px; }}
+        .summary {{ margin-bottom: 30px; }}
+        .summary-item {{ display: inline-block; margin-right: 20px; padding: 10px; border-radius: 5px; }}
+        .pass {{ background-color: #e6f4ea; color: #389e0d; }}
+        .fail {{ background-color: #fce8e6; color: #cf1322; }}
+        .error {{ background-color: #fff7e6; color: #d48806; }}
+        .skip {{ background-color: #e6f7ff; color: #1d7ddc; }}
+        .test-list { border-collapse: collapse; width: 100%; }
+        .test-list th, .test-list td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        .test-list th { background-color: #f8f8f8; }
+        .steps { list-style: none; padding-left: 20px; }
+        .step-fail { color: #cf1322; }
+        .step-error { color: #d48806; }
+    </style>
+</head>
+<body>
+    <h1>测试执行报告</h1>
+    <div class="summary">
+        <h2>测试总结</h2>
+        <div class="summary-item pass">通过：{passed}</div>
+        <div class="summary-item fail">失败：{failed}</div>
+        <div class="summary-item error">错误：{error}</div>
+        <div class="summary-item skip">跳过：{skipped}</div>
+        <div class="summary-item">总计：{total}</div>
+    </div>
+    <h2>测试用例列表</h2>
+    <table class="test-list">
+        <thead>
+            <tr>
+                <th>用例名称</th>
+                <th>状态</th>
+                <th>执行时长</th>
+                <th>步骤详情</th>
+            </tr>
+        </thead>
+        <tbody>
+            {results}
+        </tbody>
+    </table>
+</body>
+</html>
