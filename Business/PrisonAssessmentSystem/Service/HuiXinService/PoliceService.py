@@ -59,7 +59,7 @@ class PoliceService(InitHuiXin):
             res = self.service.huixin_password_login(username=user['username'], password=user['password'])
             user['cookie'] = res.headers['Set-Cookie']
         self.service.update_cookies(self.users['prison_police']['cookie'])
-        self.logger.debug(f"初始化用户cookie完成 {self.users}")
+        self.logger.debug("初始化用户cookie完成")
 
     def huixin_police_login(self, user_type: HUIXIN_USER):
         self.logger.debug(f'开始登录 {user_type.name}')

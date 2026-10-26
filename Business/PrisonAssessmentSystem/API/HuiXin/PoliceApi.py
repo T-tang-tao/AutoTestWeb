@@ -18,7 +18,7 @@ class PoliceApi(InitAPI):
         :param cookies:
         :return:
         """
-        self.logger.debug(f'更新cookies为：{cookies}')
+        self.logger.debug('更新cookies完成')
         self.police_client.headers.update({'Cookie': cookies})
 
     def huixin_password_login(self, username, password):

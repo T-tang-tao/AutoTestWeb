@@ -98,5 +98,5 @@ def HuiXin_login(test_bed,refresh=False):
         if need_login:
             _login_user(user_type)
 
-    logger.debug(f'=====环境用户cookie登录信息===== \n {GLOBAL_USER_CONFIG}')
+    logger.debug(f"环境用户登录信息已更新: {', '.join(GLOBAL_USER_CONFIG)}")
     return GLOBAL_USER_CONFIG
