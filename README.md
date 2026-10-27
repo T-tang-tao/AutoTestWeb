@@ -1,40 +1,50 @@
 # AutoTestWeb
 
-[![Task lifecycle tests](https://github.com/T-tang-tao/AutoTestWeb/actions/workflows/task-lifecycle-tests.yml/badge.svg?branch=main)](https://github.com/T-tang-tao/AutoTestWeb/actions/workflows/task-lifecycle-tests.yml)
+[![CI](https://github.com/T-tang-tao/AutoTestWeb/actions/workflows/task-lifecycle-tests.yml/badge.svg?branch=main)](https://github.com/T-tang-tao/AutoTestWeb/actions/workflows/task-lifecycle-tests.yml)
 
-AutoTestWeb 是一个基于 **Python + Flask** 的自动化测试工作台，用于组织 Python 测试用例、执行多步骤业务流程、跟踪任务状态，并复用 HTTP、数据库和测试数据能力。
+**AutoTestWeb 是一个基于 Python + Flask 的自动化测试工作台。** 它将测试用例发现、步骤执行、任务状态跟踪和 HTML 报告生成串联起来，并提供 HTTP、数据库和配置等公共能力。
 
-仓库包含独立的 Mock API 示例，无需真实业务账号或 MySQL，即可复现核心的用例加载、步骤执行、断言、HTTP 调用与结果统计。
+仓库同时提供本地 Mock API 演示，无需真实业务账号或 MySQL，就能复现核心执行流程。
 
-## 一分钟运行 Demo
+## 项目能做什么
 
-需要 Python 3.10 或更高版本。创建虚拟环境：
+| 能力 | 说明 |
+| --- | --- |
+| **用例执行** | 自动发现测试用例，按定义执行步骤、断言并汇总结果 |
+| **任务管理 API** | 提交测试任务，查询任务状态、进度和执行结果 |
+| **HTML 测试报告** | 生成任务报告，并通过接口查询或下载 |
+| **测试基础设施** | 提供 HTTP、数据库客户端、配置加载和事务处理等公共能力 |
+| **自动化质量验证** | 通过 pytest、Ruff 和 GitHub Actions 检查核心行为与回归风险 |
 
-```bash
-python -m venv .venv
-```
+## 先运行 Demo
 
-激活虚拟环境后安装项目和开发测试依赖：
+需要 **Python 3.10 或更高版本**。
+
+### 1. 创建虚拟环境并安装依赖
 
 Windows PowerShell：
 
 ```powershell
+python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements-dev.txt
-python examples/mock_api/run_demo.py
 ```
 
 macOS / Linux：
 
 ```bash
+python -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements-dev.txt
+```
+
+### 2. 启动演示
+
+```bash
 python examples/mock_api/run_demo.py
 ```
 
-Demo 会在 `127.0.0.1` 启动临时 Mock API，运行 5 个 TestRunner 示例用例，输出 JSON 摘要并在结束后关闭服务。不读取个人的 `configs/main.yml`，不需要真实凭据或 MySQL。
-
-成功时，执行摘要包含以下统计（命令会输出每个用例和步骤的完整结果）：
+Demo 会启动仅供本机访问的临时 Mock API，通过真实的 `TestRunner` 执行 5 个示例用例，输出任务摘要并生成 HTML 报告。正常情况下，摘要如下：
 
 ```json
 {
@@ -51,29 +61,47 @@ Demo 会在 `127.0.0.1` 启动临时 Mock API，运行 5 个 TestRunner 示例�
 }
 ```
 
-GitHub Actions 也会实际运行该命令，并上传 HTML 报告 artifact（每个 Python 版本一份，保留 14 天）。[查看已验证的真实运行 #40455785051](https://github.com/T-tang-tao/AutoTestWeb/actions/runs/40455785051)，其中包含任务级状态、执行统计、完整用例/步骤结果和报告生成日志。上面的摘要与下图依据该次 Python 3.12 运行结果整理；它属于本地 Mock API 示例，不代表私有业务系统已完成回归。
+报告默认保存到 `reports/mock-api-demo-report.html`，也可以用 `--report-path` 指定其他位置。
 
-![基于真实 GitHub Actions 执行结果整理的 Mock API 报告摘要](docs/images/mock-api-demo-result.svg)
+<details>
+<summary>查看 Demo 的实际结果截图</summary>
 
-本地运行后，HTML 报告默认写到 `reports/mock-api-demo-report.html`，也可以通过 `--report-path` 指定保存位置。
+![Mock API Demo 报告摘要](docs/images/mock-api-demo-result.svg)
 
-## Demo 场景
+</details>
 
-| 场景 | 预期结果 |
-| --- | --- |
-| 查询存在的商品 | HTTP 200，返回商品字段 |
-| 创建订单 | HTTP 201，返回订单信息 |
-| 查询不存在的商品 | HTTP 200，业务码为 `PRODUCT_NOT_FOUND` |
-| 提交无效订单 | HTTP 400，返回字段校验错误 |
-| 可控延迟响应 | 等待指定秒数后返回 |
+> **验证边界：** 该 Demo 用于复现框架执行主链路，不代表私有业务系统已经完成集成测试。CI 会在 Python 3.10、3.11 和 3.12 环境中运行该示例，并上传 HTML 报告供检查。
 
-商品不存在的场景特意以 HTTP 200 返回业务错误码，用来验证“传输成功”不等于“业务成功”。
+## 执行流程
 
-Demo 使用现有 `Base`、`defineSteps()` 和 `def_step()` 约定，并通过本地 HTTP 请求运行真实的 `TestRunner`。它能验证框架主链路，但不代替真实业务系统的集成测试。详见 [Mock API 演示指南](docs/mock-api-demo.md)。
+```mermaid
+flowchart LR
+    A[提交测试任务] --> B[Flask API]
+    B --> C[任务服务]
+    C --> D[TestRunner]
+    D --> E[发现并执行用例]
+    E --> F[汇总步骤与用例结果]
+    F --> G[生成 HTML 报告]
+    H[查询任务状态或下载报告] --> B
+    B --> I[返回状态、结果或报告]
+```
 
-## 连接自己的测试环境
+## 常用 API
 
-真实业务测试依赖对应的服务地址、账号、Cookie 和数据环境。安装运行时依赖后复制配置模板：
+| 方法 | 路径 | 用途 |
+| --- | --- | --- |
+| `GET` | `/` | 健康检查 |
+| `GET` | `/getTestCases` | 获取可发现的测试用例 |
+| `POST` | `/huixin/executeTestCases` | 提交测试任务 |
+| `GET` | `/huixin/getTaskStatus/<task_id>` | 查询任务状态与执行结果 |
+| `GET` | `/huixin/getTaskReport/<task_id>` | 下载任务 HTML 报告 |
+| `POST` | `/huixin/saveConfig` | 保存 TestBed 配置 |
+
+任务创建后会返回 `task_id`。任务级状态包括 `pending`、`running`、`completed`、`failed` 和 `error`。任务状态与 TestRunner 内部用例、步骤使用的中文状态并非同一组枚举。
+
+## 运行自己的测试环境
+
+如果需要连接真实业务系统，请先安装运行时依赖，并根据自己的测试环境准备配置文件。
 
 ```bash
 python -m pip install -r requirements.txt
@@ -95,75 +123,53 @@ cp configs/TestBed.example.yml configs/TestBed.yml
 cp configs/TestSet.example.yml configs/TestSet.yml
 ```
 
-编辑本地 `TestBed.yml` 中的服务地址、账号及数据库配置后，在受控的本地或内网环境启动：
+根据实际环境编辑配置后，启动 Web 服务：
 
 ```bash
 python server.py
 ```
 
-默认地址为 `http://127.0.0.1:5000`。当前服务没有完整的鉴权/访问控制能力，只应在受控开发环境运行，不要直接暴露到公网。
-
-执行本地配置的测试集：
+默认服务地址为 `http://127.0.0.1:5000`。如果需要运行本地配置的测试集，请在另一个终端执行：
 
 ```bash
 python -m TestRunner.runner
 ```
 
-## 主要 API
+> **安全提示：** 当前服务没有完整的鉴权与访问控制能力。仅应在受控的本地或内网开发环境运行，不要直接暴露到公网。真实环境测试需要获得授权，并使用合适的测试账号与数据。
 
-| 方法 | 路径 | 说明 |
-| --- | --- | --- |
-| `GET` | `/` | 健康检查 |
-| `GET` | `/getTestCases` | 枚举可发现的测试用例 |
-| `GET` | `/huixin/getConfig` | 获取 TestBed 配置 |
-| `POST` | `/huixin/saveConfig` | 保存 TestBed 配置 |
-| `POST` | `/huixin/executeTestCases` | 按评估类型提交测试任务 |
-| `GET` | `/huixin/getTaskStatus/<task_id>` | 查询任务状态、步骤结果与报告状态 |
-| `GET` | `/huixin/getTaskReport/<task_id>` | 下载任务生成的 HTML 测试报告 |
-| `POST` | `/huixin/createReport` | 提交固定的业务报告创建用例 |
+## 测试与质量检查
 
-任务创建后返回 `task_id`。状态查询响应包含任务级 `status`（`pending/running/completed/failed/error`）、进度、创建/开始/结束时间、耗时、失败摘要与结果快照，并提供 `report_available`、`report_url` 和 `report_error`。TestRunner 内部用例和步骤状态使用中文枚举，与任务级状态不是同一组值。
-
-任务结束后会尝试通过 `TestRunner/extensions/ReportGenerator.py` 生成 HTML 报告，默认保存在 `reports/tasks/<task_id>.html`（可通过 Flask 配置 `TASK_REPORTS_DIR` 覆盖目录）。当 `report_available` 为 `true` 时，可访问 `report_url` 下载报告；任务尚未结束时下载接口返回 HTTP 409，任务不存在或报告文件不可用时返回 HTTP 404，报告生成失败时返回 HTTP 500。报告生成失败只记录到 `report_error`，不会覆盖原始任务状态或测试结果；过期任务清理时也会清理对应报告文件。
-
-注意：`/huixin/createReport` 提交的是一个固定的业务报告创建用例；它与后台任务生成的 HTML 测试执行报告是两件不同的事。
-
-## 测试与 CI
-
-安装开发依赖后运行完整测试集：
+安装开发依赖后，执行完整测试集：
 
 ```bash
-python -m pip install -r requirements-dev.txt
+python -m pytest -q
+```
+
+运行覆盖率统计并生成终端、XML 和 HTML 报告：
+
+```bash
 python -m pytest -q --cov=TestRunner --cov=app --cov=utils --cov-branch --cov-report=term-missing:skip-covered --cov-report=xml:coverage.xml --cov-report=html:htmlcov
 ```
 
-覆盖率统计 `TestRunner/`、`app/` 和 `utils/` 三个核心代码目录，不把测试文件、Mock API 示例和第三方依赖计入统计范围。命令会在终端输出摘要，并生成 `coverage.xml` 与 `htmlcov/index.html`。CI 会为 Python 3.10、3.11、3.12 分别上传覆盖率 artifact，可在对应 GitHub Actions 运行页面下载。项目尚未设定硬性覆盖率门槛，先基于实际报告建立基线；覆盖率是测试范围指标，不等同于真实业务环境的集成验证。
+HTML 覆盖率报告入口为 `htmlcov/index.html`。CI 会对 Python 3.10、3.11 和 3.12 执行编译检查、Ruff 静态检查、完整 pytest 和 Mock API Demo，并上传可下载的测试报告及覆盖率 artifact。
 
-只运行 Mock API 端到端演示测试：
-
-```bash
-python -m pytest -q tests/test_mock_api_demo.py
-```
-
-CI 在推送和面向 `main` 的 Pull Request 上运行，矩阵覆盖 Python 3.10、3.11 和 3.12。每个环境执行关键模块语法编译、Mock API 示例编译、Ruff 静态检查、完整 pytest 和一次真实的 Mock API Demo 命令。
+覆盖率仅用于观察测试触达情况，不等于断言质量或真实业务环境的验收结果。当前项目没有设置硬性的最低覆盖率门槛。
 
 ## 文档导航
 
-- [架构与执行链路](docs/architecture.md)：模块边界、时序图、设计取舍和已知限制。
-- [测试策略与质量保障](docs/testing-strategy.md)：分层测试、数据隔离、失败分类与 CI 范围。
-- [覆盖率报告说明](docs/coverage.md)：覆盖范围、本地复现命令、CI artifact 和指标边界。
-- [测试用例编写指南](docs/test-case-guide.md)：命名、步骤注册、参数传递和失败路径限制。
-- [Mock API 演示指南](docs/mock-api-demo.md)：本地服务、API 场景与运行说明。
-- [应用工厂与测试配置](docs/app-factory.md)：独立 Flask app 与内存配置。
-- [数据库客户端说明](docs/database-client.md)：参数绑定、事务、连接生命周期与清理责任。
+| 文档 | 内容 |
+| --- | --- |
+| [架构与执行链路](docs/architecture.md) | 模块边界、执行流程与设计取舍 |
+| [测试策略与质量保障](docs/testing-strategy.md) | 测试分层、隔离方式、失败分类和 CI 范围 |
+| [覆盖率报告说明](docs/coverage.md) | 覆盖范围、本地命令和 CI artifact |
+| [测试用例编写指南](docs/test-case-guide.md) | 用例结构、步骤注册和参数传递 |
+| [Mock API 演示指南](docs/mock-api-demo.md) | Demo 场景、运行方法和输出说明 |
+| [应用工厂与测试配置](docs/app-factory.md) | Flask app 创建与测试配置隔离 |
+| [数据库客户端说明](docs/database-client.md) | 参数绑定、事务和连接生命周期 |
 
-## 当前边界
+## 当前限制
 
-- 任务状态保存在进程内；服务重启会丢失历史任务，多进程之间不共享状态。
-- 任务通过后台线程执行，TestRunner 当前按声明顺序串行执行用例。
-- `concurrent`、`timeout`、`depends_on` 尚未形成通用调度能力；任务级取消也尚未正式启用。
-- 用例 `setUp()` 成功后，主体步骤无论成功、断言失败或普通异常都会执行一次 `tearDown()`；`setUp()` 本身失败时则跳过主体与清理。
-- 默认 CI 不连接真实 MySQL 或私有业务系统；真实环境回归需单独执行并记录结果。
-- HTML 任务报告默认存放在 `reports/tasks/`，过期任务清理时会删除报告文件；任务记录仍保存在进程内，服务重启后不再提供历史下载。
-
-本仓库目前未声明开源许可证；获得明确授权前，请将代码用于查看与学习。
+- 任务状态保存在进程内，服务重启会丢失历史任务；多进程之间不共享任务状态。
+- 测试用例当前按声明顺序串行执行；通用并发调度、超时、依赖编排和任务取消能力尚未完整实现。
+- 默认 CI 使用 fake/mock 和本地 Mock API，不连接真实 MySQL 或私有业务系统。
+- 当前仓库未声明开源许可证；获得明确授权前，请将代码用于查看与学习。
