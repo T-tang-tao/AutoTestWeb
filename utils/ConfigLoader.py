@@ -15,17 +15,7 @@ class ConfigLoader:
     配置加载器（单例模式实现）
     支持从YAML文件加载配置，并提供手动重新加载功能
     """
-    _instance = None
-    _initialized = False
-
-    def __new__(cls, *args, **kwargs):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-        return cls._instance
-
     def __init__(self, path: str = ''):
-        if self._initialized:
-            return
         if path is None:
             path = DEFAULT_CONFIG_PATH
         if not path:
@@ -33,7 +23,6 @@ class ConfigLoader:
         self.config = {}
         self.config_path = Path(path).expanduser().resolve()
 
-        self._initialized = True
         self.load()
 
     def get_config(self):
