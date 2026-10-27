@@ -336,6 +336,8 @@ python -m pytest -q
 
 The unit tests mock the TestRunner's external service dependencies and do not require local business credentials or a live test system.
 
+Test case naming, step structure, parameter handling and result states are documented in [docs/test-case-guide.md](docs/test-case-guide.md).
+
 Application factory and isolated test configuration are documented in [docs/app-factory.md](docs/app-factory.md).
 
 The self-contained Mock API demo and one-command TestRunner run are documented in [docs/mock-api-demo.md](docs/mock-api-demo.md).
