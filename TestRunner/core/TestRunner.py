@@ -125,7 +125,18 @@ class TestRunner:
     # -------------------------
     def _execute_tests(self):
         """执行所有测试用例的主流程"""
-        if self._init_test_cases():
+        try:
+            cases_initialized = self._init_test_cases()
+        except Exception as exc:
+            # Initialization failures are framework errors, not assertion failures.
+            self.test_set_status = TestStatus.ERROR.value
+            self.test_set_error = self.test_set_error or str(exc)
+            self.overall_end_time = self.overall_end_time or time_now()
+            self._refresh_stats()
+            self.is_running = False
+            raise
+
+        if cases_initialized:
             try:
                 if self.loaded_cases_num == 0:
                     self.logger.warning("[测试执行] 无可用测试用例，终止执行")
@@ -447,6 +458,16 @@ class TestRunner:
 
     def _refresh_stats(self) -> None:
         """Update aggregate case counts from the final per-case results."""
+        error_count = (
+            sum(
+                1 for case in self.test_instances
+                if case.test_status == TestStatus.ERROR.value
+            )
+            + len(self.load_errors)
+        )
+        if self.total_set_cases_num and self.test_set_error and error_count == 0:
+            error_count = 1
+
         self.stats = {
             "total": self.total_set_cases_num,
             "passed": sum(
@@ -457,13 +478,7 @@ class TestRunner:
                 1 for case in self.test_instances
                 if case.test_status == TestStatus.FAIL.value
             ),
-            "error": (
-                sum(
-                    1 for case in self.test_instances
-                    if case.test_status == TestStatus.ERROR.value
-                )
-                + len(self.load_errors)
-            ),
+            "error": error_count,
             "skipped": sum(
                 1 for case in self.test_instances
                 if case.test_status == TestStatus.SKIP.value
