@@ -307,8 +307,8 @@ GitHub Actions 会在 Pull Request 和分支推送时运行，测试矩阵覆盖
 
 ```bash
 python -m pip install -r requirements-dev.txt
-python -m py_compile TestRunner/core/TestRunner.py TestRunner/services/DataBaseClient.py app/services/excute_testcases.py app/routes/huixin_routes.py utils/task_state.py
-ruff check TestRunner/core/TestRunner.py TestRunner/services/DataBaseClient.py app/services/excute_testcases.py app/routes/huixin_routes.py utils/task_state.py tests --select E4,E7,E9,F --ignore F401
+python -m py_compile TestRunner/core/TestRunner.py TestRunner/services/DataBaseClient.py app/__init__.py app/routes/base_routes.py app/routes/huixin_routes.py app/services/excute_testcases.py utils/ConfigLoader.py utils/LoggerManager.py utils/task_state.py
+ruff check TestRunner/core/TestRunner.py TestRunner/services/DataBaseClient.py app/__init__.py app/routes/base_routes.py app/routes/huixin_routes.py app/services/excute_testcases.py utils/ConfigLoader.py utils/LoggerManager.py utils/task_state.py tests --select E4,E7,E9,F --ignore F401
 python -m pytest -q
 ```
 
