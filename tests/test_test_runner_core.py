@@ -192,6 +192,9 @@ class passing_case(Base):
     assert details["progress"]["case_stats"]["passed"] == runner.stats["passed"]
     assert details["progress"]["steps_stats"]["passed_steps"] == 1
     assert runner._calculate_progress() == 100.0
+    assert runner._loaded_module_names == []
+    module_prefix = f"_autotestweb_case_{runner.task_id.replace('-', '')}_"
+    assert not any(name.startswith(module_prefix) for name in sys.modules)
 
 
 def test_assertion_failure_marks_step_and_skips_remaining_steps(runner_class, tmp_path):
