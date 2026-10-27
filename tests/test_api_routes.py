@@ -1,6 +1,5 @@
 """Contract tests for the versioned, business-agnostic API routes."""
 
-from pathlib import Path
 from types import SimpleNamespace
 
 import app.routes.api_routes as api_routes
