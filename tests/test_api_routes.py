@@ -203,3 +203,42 @@ def test_legacy_huixin_routes_remain_available():
     assert response.get_json()["data"] == {
         "service": {"base_url": "http://service.test"}
     }
+
+
+def test_legacy_huixin_task_submission_keeps_assessment_adapter(monkeypatch):
+    import app.routes.huixin_routes as huixin_routes
+
+    app = create_app(
+        test_config={"TESTING": True},
+        project_config=_project_config(),
+    )
+    selected_cases = [
+        {
+            "path": "PrisonAssessmentSystem/TestCases/Assessment/InPrison/sample.py",
+            "name": "legacy_sample",
+        }
+    ]
+
+    def fake_select(payload):
+        assert payload["assessment"] == "in_base"
+        return selected_cases
+
+    def fake_submit(cases, params, status_code, message):
+        assert cases == selected_cases
+        assert params == {"record_id": "record-legacy"}
+        return {"task_id": "legacy-task", "status": "pending"}, message, status_code
+
+    monkeypatch.setattr(huixin_routes, "get_huixin_test_cases", fake_select)
+    monkeypatch.setattr(huixin_routes, "submit_test_cases", fake_submit)
+
+    response = app.test_client().post(
+        "/huixin/executeTestCases",
+        json={
+            "assessment": "in_base",
+            "params": {"record_id": "record-legacy"},
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["status"] == "success"
+    assert response.get_json()["data"]["task_id"] == "legacy-task"
