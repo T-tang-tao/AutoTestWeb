@@ -61,7 +61,7 @@ flowchart LR
 | HTTP 测试 | Requests、Tenacity |
 | 数据与配置 | MySQL、PyMySQL、YAML |
 | 报告与日志 | HTML Template、Python Logging |
-| 异步任务扩展 | Celery、Redis 配置骨架 |
+| 后台任务执行 | Python `threading`、进程内任务状态管理 |
 
 ## 快速开始
 
@@ -158,11 +158,13 @@ python -m TestRunner.runner
 }
 ```
 
-服务会返回 `task_id`，随后可轮询：
+服务会返回 `task_id` 和当前任务状态，随后可轮询：
 
 ```text
 GET /huixin/getTaskStatus/<task_id>
 ```
+
+任务状态字段为 `task_status`，可能值为 `pending`、`running`、`completed`、`failed` 或 `error`。其中 `completed` 表示测试套执行成功结束；测试套未通过时为 `failed`；任务初始化或执行过程中抛出未处理异常时为 `error`。响应同时包含任务创建/开始/结束时间、执行进度和测试用例详情。
 
 ## 配置说明
 
@@ -276,7 +278,7 @@ AutoTestWeb/
 ## 当前边界
 
 - 当前任务状态保存在进程内，服务重启后不会保留历史任务。
-- 默认任务执行使用后台线程；Celery 与 Redis 目前仅保留配置骨架，启动服务不依赖 Redis。
+- 任务统一通过 `submit_test_task` 入口使用后台线程执行；状态由状态机维护，执行结果映射为 `completed`、`failed` 或 `error`。任务记录保存在当前进程内，服务重启后不会保留，多个进程之间也不共享。
 - 项目提供 JSON API，不包含前端管理页面。
 - 用例默认串行执行；并发、依赖和超时字段尚未接入主执行器。
 - 业务示例依赖外部测试环境，未配置环境时无法独立跑通完整流程。

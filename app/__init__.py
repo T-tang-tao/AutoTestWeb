@@ -22,16 +22,6 @@ LoggerManager(config['logger'])
 AutoTestFramework_Root = str(PROJECT_ROOT)
 
 
-# Redis 配置（存储任务状态）
-REDIS_HOST = 'localhost'
-REDIS_PORT = 6379
-REDIS_DB = 0
-
-# Celery 配置
-CELERY_BROKER_URL = f'redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}'
-CELERY_RESULT_BACKEND = f'redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}'
-
-
 def create_app():
     app = Flask(__name__)
 

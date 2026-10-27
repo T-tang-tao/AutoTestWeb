@@ -4,4 +4,3 @@ PyMySQL>=1.1,<2
 PyYAML>=6.0,<7
 requests>=2.31,<3
 tenacity>=8.2,<10
-celery>=5.3,<6

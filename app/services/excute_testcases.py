@@ -1,158 +1,225 @@
 import uuid
-from datetime import datetime
-import time
+from copy import deepcopy
+from datetime import datetime, timedelta
+from threading import Lock, RLock, Thread
 from typing import Optional, Dict
 
-from TestRunner.core.Base import StepStatus
 from TestRunner.core.TestRunner import TestRunner
+from utils.task_state import (
+    InvalidTaskTransition,
+    TERMINAL_TASK_STATUSES,
+    TaskStatus,
+    status_from_runner,
+    validate_transition,
+)
 from utils.LoggerManager import LoggerManager
-from utils.ConfigLoader import ConfigLoader
-from utils.Common import HuiXin_login
 
 # 初始化日志
 logger = LoggerManager().get_logger()
-ConfigLoader = ConfigLoader()
 
 
 # ------------------------------
 # 任务管理类（TestTask/TestTaskManager）
 # ------------------------------
 class TestTask:
-    """测试任务状态管理（直接关联TestRunner实例）"""
+    """维护单个任务的生命周期和执行结果。"""
 
     def __init__(self, task_id: str, config: Dict):
         self.task_id = task_id
-        self.config = config
-        self.runner = None  # 直接保存TestRunner实例
-
-        self.status = "pending"  # pending/running/completed/failed/cancelled
+        self.config = deepcopy(config)
+        self.runner = None
+        self._status = TaskStatus.PENDING
+        self._lock = RLock()
         self.progress = 0.0
-        self.start_time = datetime.now()
+        self.created_at = datetime.now()
+        self.start_time = None
         self.end_time = None
         self.error = None
 
-    def attach_runner(self, runner: TestRunner):
-        """关联TestRunner实例"""
-        self.runner = runner
-        self.status = "running"
+    @property
+    def status(self) -> str:
+        return self._status.value
 
-    @staticmethod
-    def calculate_step_pass_percentage(test_instances_details) -> float:
-        """
-        根据所有步骤的通过情况计算进度百分比
-        公式：(通过的步骤数 / 总步骤数) * 100%
-        """
-        total_steps = 0
-        passed_steps = 0
+    def transition(self, target: TaskStatus, error=None) -> None:
+        """Apply a validated state transition and record lifecycle timestamps."""
+        with self._lock:
+            next_status = validate_transition(self._status, target)
+            now = datetime.now()
 
-        # 遍历所有测试实例
-        for instance in test_instances_details:
-            # 遍历当前实例的所有步骤
-            for step in instance.get("steps", []):
-                total_steps += 1
-                # 统计"通过"状态的步骤
-                if step.get("status") == "通过":  # 注意：与实际状态值匹配（如"通过"或"PASS"）
-                    passed_steps += 1
+            if next_status == TaskStatus.RUNNING and self.start_time is None:
+                self.start_time = now
+            if next_status in TERMINAL_TASK_STATUSES:
+                self.end_time = now
+                self.progress = 100.0
+            if error is not None:
+                self.error = str(error)
 
-        # 处理无步骤的特殊情况
-        if total_steps == 0:
-            return 0.0  # 无步骤时进度为0%（或根据业务需求返回100%）
+            self._status = next_status
 
-        # 计算百分比并保留2位小数
-        return round((passed_steps / total_steps) * 100, 2)
+    def attach_runner(self, runner: TestRunner) -> None:
+        """Attach the TestRunner instance used to execute this task."""
+        with self._lock:
+            self.runner = runner
+
+    def is_expired(self, cutoff: datetime) -> bool:
+        """Check retention under the same lock used for state transitions."""
+        with self._lock:
+            return (
+                self._status in TERMINAL_TASK_STATUSES
+                and self.end_time is not None
+                and self.end_time < cutoff
+            )
+
+    def _current_progress(self) -> float:
+        if self.status in {status.value for status in TERMINAL_TASK_STATUSES}:
+            return 100.0
+        if self.runner is not None:
+            try:
+                return round(float(self.runner._calculate_progress()), 2)
+            except (AttributeError, TypeError, ValueError):
+                pass
+        return self.progress
 
     def to_dict(self) -> Dict:
-        """序列化任务信息（获取最新状态后返回）"""
-        config = ConfigLoader.get_config()
-        if self.runner:
-            test_instances_details = self.runner.get_test_instances_details()
-            status = {
-                "task_id": self.task_id,
-                'config': {
-                    'TestBed':config['TestBed'],
-                    'TestSet':config['TestSet'],
-                },
-                "test_instances": test_instances_details  # 获取最新状态
+        """Return the same result payload for pending, running and terminal tasks."""
+        with self._lock:
+            runner = self.runner
+            task_status = self.status
+            error = self.error
+            start_time = self.start_time
+            end_time = self.end_time
+            created_at = self.created_at
+            config = self.config
+
+        test_instances = runner.get_test_instances_details() if runner else {}
+        config_payload = {}
+        if runner:
+            config_payload = {
+                "TestBed": config.get("TestBed"),
+                "TestSet": config.get("TestSet"),
             }
-            # logger.info(f'任务状态：{status}')
-            return status
-        else:
-            return {}
+
+        return {
+            "task_id": self.task_id,
+            "task_status": task_status,
+            "progress": self._current_progress(),
+            "created_at": created_at.isoformat(timespec="seconds"),
+            "start_time": start_time.isoformat(timespec="seconds") if start_time else None,
+            "end_time": end_time.isoformat(timespec="seconds") if end_time else None,
+            "error": error,
+            "config": config_payload,
+            "test_instances": test_instances,
+        }
 
 
 class TestTaskManager:
-    """全局任务管理器（单例）"""
+    """Thread-safe process-local registry for submitted test tasks."""
+
     _instance = None
-    _tasks = {}  # {task_id: TestTask}
+    _instance_lock = Lock()
 
     def __new__(cls):
-        if not cls._instance:
-            cls._instance = super().__new__(cls)
+        with cls._instance_lock:
+            if cls._instance is None:
+                cls._instance = super().__new__(cls)
         return cls._instance
 
     def __init__(self):
-        """初始化任务管理器"""
-        self.test_instance_lists = []
+        # __new__ serializes instance creation; guard initialization too because
+        # concurrent callers may enter __init__ on the same singleton instance.
+        with self._instance_lock:
+            if getattr(self, "_initialized", False):
+                return
+            self._tasks = {}
+            self._lock = RLock()
+            self._initialized = True
 
     def create_task(self, config: Dict) -> str:
-        """创建新任务"""
+        """Create an isolated task record and opportunistically expire old tasks."""
+        self._cleanup_expired_tasks()
         task_id = str(uuid.uuid4())
-        self._tasks[task_id] = TestTask(task_id, config)
-        # self._cleanup_expired_tasks()  # 清理过期任务
+        task = TestTask(task_id, config)
+        with self._lock:
+            self._tasks[task_id] = task
         return task_id
 
     def get_task(self, task_id: str) -> Optional[TestTask]:
-        """获取任务实例"""
-        return self._tasks.get(task_id)
+        with self._lock:
+            return self._tasks.get(task_id)
 
-    def _cleanup_expired_tasks(self, max_keep_time: int = 3600):
-        """清理1小时前已完成的任务"""
-        current_time = time.time()
-        expired_ids = []
-        for task_id, task in self._tasks.items():
-            if task.status in ["completed", "failed", "cancelled"]:
-                task_lifetime = current_time - task.start_time.timestamp()
-                if task_lifetime > max_keep_time:
-                    expired_ids.append(task_id)
-        for task_id in expired_ids:
-            del self._tasks[task_id]
+    def _cleanup_expired_tasks(self, max_keep_time: int = 3600) -> None:
+        """Remove terminal tasks one hour after they finished."""
+        cutoff = datetime.now() - timedelta(seconds=max_keep_time)
+        with self._lock:
+            expired_ids = [
+                task_id
+                for task_id, task in self._tasks.items()
+                if task.is_expired(cutoff)
+            ]
+            for task_id in expired_ids:
+                del self._tasks[task_id]
+
         if expired_ids:
-            LoggerManager().get_logger().info(f"清理过期任务({len(expired_ids)}个)")
+            logger.info("清理过期任务(%s个)", len(expired_ids))
 
 
 # ------------------------------
-# 任务执行与回调函数
+# 任务提交与执行
 # ------------------------------
-def run_test_task(task_id: str,params):
-    """在线程中执行测试任务"""
+def submit_test_task(config: Dict, params=None) -> str:
+    """Create a task and submit it through the single supported thread executor."""
+    task_manager = TestTaskManager()
+    task_id = task_manager.create_task(config)
+    thread = Thread(
+        target=run_test_task,
+        args=(task_id, params),
+        name=f"TestTask-{task_id[:8]}",
+        daemon=True,
+    )
+
+    try:
+        thread.start()
+    except Exception as exc:
+        task = task_manager.get_task(task_id)
+        if task is not None:
+            task.transition(TaskStatus.ERROR, error=exc)
+        raise
+
+    return task_id
+
+
+def run_test_task(task_id: str, params=None) -> None:
+    """Execute one task and always record a terminal status."""
     task_manager = TestTaskManager()
     task = task_manager.get_task(task_id)
-    if not task:
-        LoggerManager().get_logger().error(f"任务不存在: {task_id}")
+    if task is None:
+        logger.error("任务不存在: %s", task_id)
         return
 
     try:
-        # 创建TestRunner并绑定回调
-        runner = TestRunner(
-            config=task.config,
-            params=params,
-        )
-
-        # 关联TestRunner实例到任务
+        task.transition(TaskStatus.RUNNING)
+        runner = TestRunner(config=task.config, params=params)
         task.attach_runner(runner)
-        task_manager.test_instance_lists.append(runner.test_instances)
-
-        # 执行测试（同步模式，由当前线程托管）
         runner.run(async_mode=False)
 
-    except Exception as e:
-        task.status = "failed"
-        task.error = str(e)
-        task.end_time = datetime.now()
-        LoggerManager().get_logger().error(f"任务执行失败: {e}", exc_info=True)
+        final_status = status_from_runner(
+            getattr(runner, "test_set_status", None)
+        )
+        runner_error = getattr(runner, "test_set_error", None)
+        task.transition(
+            final_status,
+            error=runner_error if final_status == TaskStatus.ERROR else None,
+        )
+    except Exception as exc:
+        try:
+            task.transition(TaskStatus.ERROR, error=exc)
+        except InvalidTaskTransition:
+            logger.exception("任务已进入终态，无法再次更新状态: %s", task_id)
+        logger.error("任务执行失败: %s", exc, exc_info=True)
 
 
 def execute_test_task(assessment_config):
+
     """
     执行测试任务：根据评估类型返回对应的测试用例列表
     Args:
