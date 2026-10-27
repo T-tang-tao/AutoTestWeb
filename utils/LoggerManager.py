@@ -25,7 +25,7 @@ class LoggerManager:
             'level': logging.DEBUG,
             'format': "%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d - %(funcName)s] - %(message)s",
             'console_output': True,
-            'log_file':f"logs/app_{datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")}.log",  # 改为动态生成，由外部传入或默认生成
+            'log_file': f"logs/app_{datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}.log",  # 改为动态生成，由外部传入或默认生成
             'max_bytes': 10 * 1024 * 1024,  # 10MB
             'backup_count': 5
         }
