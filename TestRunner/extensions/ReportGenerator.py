@@ -31,7 +31,7 @@ class ReportGenerator:
         report_path = Path(self.report_path)
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(filled_template, encoding="utf-8")
-        print("HTML测试报告已生成：%s", os.path.abspath(report_path))
+        print(f"HTML测试报告已生成：{os.path.abspath(report_path)}")
 
     def _format_result(self, result):
         steps_html = []
