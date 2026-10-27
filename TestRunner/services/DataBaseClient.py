@@ -1,213 +1,484 @@
-"""本模块提供了一个数据库客户端类，用于与 MySQL 数据库进行交互。"""
+"""MySQL client with explicit transaction boundaries and validated helper SQL.
+
+Values are always passed separately through PyMySQL parameters. The convenience
+methods only allow a deliberately small subset of SQL conditions; callers who
+need a different expression should use a trusted, static SQL statement with
+execute_query/execute_update and must not interpolate untrusted input.
+"""
+
+import re
+from contextlib import contextmanager
+from threading import RLock
+from typing import Any, Dict, List, Optional, Tuple
 
 import pymysql
-from typing import Optional, List, Dict, Any
-from contextlib import contextmanager
 
 from utils.LoggerManager import LoggerManager
 
 
+_IDENTIFIER = r"[A-Za-z_][A-Za-z0-9_$]*"
+_QUALIFIED_IDENTIFIER = rf"{_IDENTIFIER}(?:\.{_IDENTIFIER})*"
+_IDENTIFIER_RE = re.compile(rf"^{_QUALIFIED_IDENTIFIER}$")
+_COLUMN_RE = re.compile(
+    rf"^(?P<identifier>{_QUALIFIED_IDENTIFIER})(?:\s+(?:AS\s+)?(?P<alias>{_IDENTIFIER}))?$",
+    re.IGNORECASE,
+)
+_ORDER_ITEM_RE = re.compile(
+    rf"^(?P<identifier>{_QUALIFIED_IDENTIFIER})(?:\s+(?P<direction>ASC|DESC))?$",
+    re.IGNORECASE,
+)
+
+
+class _ConditionParser:
+    """Parser for identifier comparisons joined by AND/OR, with safe placeholders."""
+
+    _TOKEN_RE = re.compile(
+        r"\s*(?:(?P<named_placeholder>%\([A-Za-z_][A-Za-z0-9_]*\)s)"
+        r"|(?P<placeholder>%s)"
+        r"|(?P<keyword>AND|OR|IS|NOT|NULL|LIKE|IN)\b"
+        r"|(?P<identifier>[A-Za-z_][A-Za-z0-9_$]*(?:\.[A-Za-z_][A-Za-z0-9_$]*)*)"
+        r"|(?P<operator><=|>=|<>|!=|=|<|>)"
+        r"|(?P<lparen>\()"
+        r"|(?P<rparen>\))"
+        r"|(?P<comma>,))",
+        re.IGNORECASE,
+    )
+
+    def __init__(self, condition: str):
+        self.condition = condition
+        self.tokens = self._tokenize(condition)
+        self.position = 0
+
+    @classmethod
+    def _tokenize(cls, condition: str) -> List[Tuple[str, str]]:
+        tokens = []
+        position = 0
+        while position < len(condition):
+            if not condition[position:].strip():
+                break
+            match = cls._TOKEN_RE.match(condition, position)
+            if match is None:
+                raise ValueError(
+                    f"不支持的 SQL 条件片段: {condition[position:]!r}"
+                )
+            token_kind = next(
+                kind for kind, value in match.groupdict().items()
+                if value is not None
+            )
+            token_value = match.group(token_kind)
+            if token_kind == "keyword":
+                token_value = token_value.upper()
+            tokens.append((token_kind, token_value))
+            position = match.end()
+        if not tokens:
+            raise ValueError("SQL 条件不能为空")
+        return tokens
+
+    def parse(self) -> List[Tuple[str, str]]:
+        self._parse_expression()
+        if self.position != len(self.tokens):
+            raise ValueError(
+                f"SQL 条件存在多余片段: {self.tokens[self.position][1]!r}"
+            )
+        return self.tokens
+
+    def _current(self):
+        if self.position >= len(self.tokens):
+            return None, None
+        return self.tokens[self.position]
+
+    def _accept(self, kind: str, value: Optional[str] = None) -> bool:
+        current_kind, current_value = self._current()
+        if current_kind != kind:
+            return False
+        if value is not None and current_value.upper() != value.upper():
+            return False
+        self.position += 1
+        return True
+
+    def _expect(self, kind: str, value: Optional[str] = None) -> str:
+        current_kind, current_value = self._current()
+        if current_kind != kind or (
+            value is not None and current_value.upper() != value.upper()
+        ):
+            expected = value or kind
+            actual = current_value if current_value is not None else "条件结束"
+            raise ValueError(f"SQL 条件格式错误：需要 {expected}，实际为 {actual!r}")
+        self.position += 1
+        return current_value
+
+    def _accept_keyword(self, value: str) -> bool:
+        return self._accept("keyword", value)
+
+    def _parse_expression(self) -> None:
+        self._parse_and_expression()
+        while self._accept_keyword("OR"):
+            self._parse_and_expression()
+
+    def _parse_and_expression(self) -> None:
+        self._parse_atom()
+        while self._accept_keyword("AND"):
+            self._parse_atom()
+
+    def _parse_atom(self) -> None:
+        if self._accept("lparen"):
+            self._parse_expression()
+            self._expect("rparen")
+            return
+
+        self._expect("identifier")
+        if self._accept("operator"):
+            self._expect_placeholder()
+            return
+        if self._accept_keyword("LIKE"):
+            self._expect_placeholder()
+            return
+        if self._accept_keyword("NOT"):
+            if self._accept_keyword("LIKE"):
+                self._expect_placeholder()
+                return
+            if self._accept_keyword("IN"):
+                self._parse_in_list()
+                return
+            raise ValueError("SQL 条件中的 NOT 仅支持 NOT LIKE 或 NOT IN")
+        if self._accept_keyword("IS"):
+            self._accept_keyword("NOT")
+            self._expect("keyword", "NULL")
+            return
+        if self._accept_keyword("IN"):
+            self._parse_in_list()
+            return
+        raise ValueError(
+            "SQL 条件仅支持比较运算符、LIKE、IN、IS NULL 以及 AND/OR 组合"
+        )
+
+    def _expect_placeholder(self) -> None:
+        if not (self._accept("placeholder") or self._accept("named_placeholder")):
+            raise ValueError("SQL 条件的值必须使用 %s 或 %(name)s 参数占位符")
+
+    def _parse_in_list(self) -> None:
+        self._expect("lparen")
+        self._expect_placeholder()
+        while self._accept("comma"):
+            self._expect_placeholder()
+        self._expect("rparen")
+
+
 class DataBaseClient:
-    """数据库客户端类，用于管理 MySQL 数据库连接和执行 SQL 操作。"""
+    """MySQL client with explicit transaction and cursor lifecycle management."""
 
-    def __init__(self, host: str, user: str, password: str, database: str, port: int = 3306):
-        """初始化数据库连接参数并建立连接。
-
-        Args:
-            host (str): 数据库地址。
-            user (str): 用户名。
-            password (str): 密码。
-            database (str): 数据库名称。
-            port (int, optional): 端口号，默认为 3306。
-        """
+    def __init__(
+        self,
+        host: str,
+        user: str,
+        password: str,
+        database: str,
+        port: int = 3306,
+    ):
         self.host = host
         self.user = user
         self.password = password
         self.database = database
         self.port = port
         self.logger = LoggerManager().get_logger()
-
-        self.connection = self.connect()
+        self._lock = RLock()
+        self._transaction_depth = 0
+        self.connection = None
+        self.connect()
 
     def connect(self):
-        """建立数据库连接。
+        """Open and store a connection, reusing an existing live connection."""
+        with self._lock:
+            if self.connection is not None and getattr(self.connection, "open", True):
+                return self.connection
+            try:
+                self.connection = pymysql.connect(
+                    host=self.host,
+                    user=self.user,
+                    password=self.password,
+                    database=self.database,
+                    port=self.port,
+                )
+                self.logger.debug("Database connected successfully...")
+                return self.connection
+            except pymysql.MySQLError as exc:
+                self.logger.error("Error connecting to MySQL: %s", exc)
+                raise
 
-        Returns:
-            pymysql.connections.Connection: 数据库连接对象。
+    def _ensure_connection(self) -> None:
+        if self.connection is None or not getattr(self.connection, "open", True):
+            if self._transaction_depth:
+                raise RuntimeError("事务执行期间数据库连接已关闭")
+            self.connect()
 
-        Raises:
-            pymysql.MySQLError: 数据库连接失败时抛出异常。
-        """
-        try:
-            connection = pymysql.connect(
-                host=self.host,
-                user=self.user,
-                password=self.password,
-                database=self.database,
-                port=self.port
-            )
-            self.logger.debug("Database connected successfully...")
-            return connection
-        except pymysql.MySQLError as e:
-            self.logger.error(f"Error connecting to MySQL: {e}")
-            raise
-
-    def disconnect(self):
-        """关闭数据库连接。"""
-        if self.connection:
-            self.connection.close()
-            self.logger.debug("Database connection closed.")
+    def disconnect(self) -> None:
+        """Close the owned connection; a later operation can reconnect lazily."""
+        with self._lock:
+            if self._transaction_depth:
+                raise RuntimeError("不能在事务执行期间关闭数据库连接")
+            connection = self.connection
+            try:
+                if connection is not None and getattr(connection, "open", True):
+                    connection.close()
+                    self.logger.debug("Database connection closed.")
+            finally:
+                self.connection = None
 
     @contextmanager
     def get_cursor(self):
-        """获取数据库游标，支持上下文管理器。
+        """Yield a cursor and always close it, serializing use of this connection."""
+        with self._lock:
+            self._ensure_connection()
+            cursor = self.connection.cursor()
+            try:
+                yield cursor
+            finally:
+                cursor.close()
 
-        Yields:
-            pymysql.cursors.Cursor: 数据库游标对象。
-        """
-        if not self.connection:
-            self.connect()
-        cursor = self.connection.cursor()
-        try:
-            yield cursor
-        finally:
-            cursor.close()
+    @staticmethod
+    def _quote_identifier(identifier: str, label: str = "标识符") -> str:
+        """Validate an identifier and quote each MySQL identifier segment."""
+        if not isinstance(identifier, str) or not _IDENTIFIER_RE.fullmatch(identifier):
+            raise ValueError(f"非法{label}: {identifier!r}")
+        return ".".join(f"`{segment}`" for segment in identifier.split("."))
 
-    def execute_query(self, sql: str, params: Optional[Any] = None) -> List[Dict[str, Any]]:
-        """执行查询语句。
+    def _format_column(self, column: str) -> str:
+        if not isinstance(column, str):
+            raise ValueError(f"非法字段名: {column!r}")
+        column = column.strip()
+        if column == "*":
+            return "*"
+        if column.endswith(".*"):
+            table_part = column[:-2]
+            return f"{self._quote_identifier(table_part, '字段名')}.*"
 
-        Args:
-            sql (str): SQL 查询语句。
-            params (Optional[Any], optional): SQL 参数，默认为 None。
+        match = _COLUMN_RE.fullmatch(column)
+        if match is None:
+            raise ValueError(f"不支持的 SELECT 字段表达式: {column!r}")
+        rendered = self._quote_identifier(match.group("identifier"), "字段名")
+        alias = match.group("alias")
+        if alias:
+            rendered += f" AS {self._quote_identifier(alias, '字段别名')}"
+        return rendered
 
-        Returns:
-            List[Dict[str, Any]]: 查询结果列表，每个元素为字典形式。
-        """
-        self.logger.debug(f'sql:{sql}, params:{params}')
-        with self.get_cursor() as cursor:
-            cursor.execute(sql, params)
-            return cursor.fetchall()
+    def _format_order_by(self, order_by: str) -> str:
+        pieces = [piece.strip() for piece in order_by.split(",")]
+        if not pieces or any(not piece for piece in pieces):
+            raise ValueError(f"非法排序字段: {order_by!r}")
+
+        result = []
+        for piece in pieces:
+            match = _ORDER_ITEM_RE.fullmatch(piece)
+            if match is None:
+                raise ValueError(f"不支持的排序表达式: {piece!r}")
+            item = self._quote_identifier(match.group("identifier"), "排序字段")
+            direction = match.group("direction")
+            if direction:
+                item += f" {direction.upper()}"
+            result.append(item)
+        return ", ".join(result)
+
+    def _prepare_condition(
+        self,
+        condition: Optional[str],
+        params: Optional[Any],
+        *,
+        required: bool = False,
+    ):
+        if condition is None or not isinstance(condition, str) or not condition.strip():
+            if required:
+                raise ValueError("必须提供 WHERE 条件，避免意外操作整张表")
+            if params is not None and params not in ((), [], {}):
+                raise ValueError("没有 WHERE 条件时不能传入条件参数")
+            return None, None
+
+        tokens = _ConditionParser(condition).parse()
+        positional_count = sum(kind == "placeholder" for kind, _ in tokens)
+        named_keys = [
+            value[2:-2] for kind, value in tokens if kind == "named_placeholder"
+        ]
+        if positional_count and named_keys:
+            raise ValueError("同一 WHERE 条件不能混用位置参数和命名参数")
+
+        if named_keys:
+            if not isinstance(params, dict):
+                raise ValueError("使用命名占位符时，条件参数必须是字典")
+            missing = sorted(set(named_keys) - params.keys())
+            if missing:
+                raise ValueError(f"WHERE 条件缺少命名参数: {', '.join(missing)}")
+            normalized_params = params
+        else:
+            if params is None:
+                normalized_params = ()
+            elif isinstance(params, dict):
+                # Preserve the existing helper API's insertion-order mapping behavior.
+                normalized_params = tuple(params.values())
+            elif isinstance(params, (list, tuple)):
+                normalized_params = tuple(params)
+            else:
+                normalized_params = (params,)
+            if len(normalized_params) != positional_count:
+                raise ValueError(
+                    f"WHERE 条件需要 {positional_count} 个参数，"
+                    f"实际收到 {len(normalized_params)} 个"
+                )
+
+        safe_tokens = []
+        for kind, value in tokens:
+            if kind == "identifier":
+                safe_tokens.append(self._quote_identifier(value, "条件字段"))
+            elif kind == "keyword":
+                safe_tokens.append(value.upper())
+            else:
+                safe_tokens.append(value)
+        return " ".join(safe_tokens), normalized_params
+
+    def execute_query(
+        self, sql: str, params: Optional[Any] = None
+    ) -> List[Dict[str, Any]]:
+        """Execute a trusted query; pass user values via params, never interpolation."""
+        self.logger.debug("sql:%s, params:%s", sql, params)
+        with self._lock:
+            try:
+                with self.get_cursor() as cursor:
+                    cursor.execute(sql, params)
+                    return cursor.fetchall()
+            except Exception:
+                if self._transaction_depth == 0 and self.connection is not None:
+                    self.connection.rollback()
+                raise
 
     def execute_update(self, sql: str, params: Optional[Any] = None) -> int:
-        """执行更新语句（INSERT/UPDATE/DELETE）。
-
-        Args:
-            sql (str): SQL 更新语句。
-            params (Optional[Any], optional): SQL 参数，默认为 None。
-
-        Returns:
-            int: 受影响的行数。
-        """
-        self.logger.debug(f'sql:{sql}, params:{params}')
-        with self.get_cursor() as cursor:
-            cursor.execute(sql, params)
-            self.connection.commit()
-            return cursor.rowcount
+        """Execute trusted SQL; commit standalone updates, defer commits in a transaction."""
+        self.logger.debug("sql:%s, params:%s", sql, params)
+        with self._lock:
+            try:
+                with self.get_cursor() as cursor:
+                    cursor.execute(sql, params)
+                    rowcount = cursor.rowcount
+                if self._transaction_depth == 0:
+                    self.connection.commit()
+                return rowcount
+            except Exception:
+                if self._transaction_depth == 0 and self.connection is not None:
+                    self.connection.rollback()
+                raise
 
     @contextmanager
     def transaction(self):
-        """事务管理，支持上下文管理器。
+        """Commit the whole block on success; roll back and re-raise on any error.
 
-        Raises:
-            Exception: 事务执行过程中出现异常时回滚事务并抛出异常。
+        Nested transactions are intentionally not supported because this client does
+        not implement savepoints. Callers should create one transaction per unit of
+        work and keep all related updates inside that block.
         """
-        if not self.connection:
-            self.connect()
-        try:
-            yield
-            self.connection.commit()
-            self.logger.debug("Transaction committed.")
-        except Exception as e:
-            self.connection.rollback()
-            self.logger.error(f"Transaction rolled back due to error: {e}")
-            raise
+        with self._lock:
+            self._ensure_connection()
+            if self._transaction_depth:
+                raise RuntimeError("不支持嵌套事务，请将操作放入同一事务上下文")
+            self._transaction_depth = 1
+            try:
+                self.connection.begin()
+                yield
+                self.connection.commit()
+                self.logger.debug("Transaction committed.")
+            except Exception as exc:
+                try:
+                    if self.connection is not None:
+                        self.connection.rollback()
+                except Exception:
+                    self.logger.exception("Transaction rollback failed.")
+                self.logger.error("Transaction rolled back due to error: %s", exc)
+                raise
+            finally:
+                self._transaction_depth = 0
 
     def insert(self, table: str, data: Dict[str, Any]) -> int:
-        """插入数据。
-
-        Args:
-            table (str): 表名。
-            data (Dict[str, Any]): 插入的数据，字典形式。
-
-        Returns:
-            int: 受影响的行数。
-        """
-        columns = ", ".join(data.keys())
+        """Insert a row; table/column names are validated and values are parameterized."""
+        if not isinstance(data, dict) or not data:
+            raise ValueError("insert 的 data 必须是非空字典")
+        table_sql = self._quote_identifier(table, "表名")
+        columns = [self._quote_identifier(key, "字段名") for key in data]
+        column_sql = ", ".join(columns)
         placeholders = ", ".join(["%s"] * len(data))
-        sql = f"INSERT INTO {table} ({columns}) VALUES ({placeholders})"
+        sql = f"INSERT INTO {table_sql} ({column_sql}) VALUES ({placeholders})"
         return self.execute_update(sql, tuple(data.values()))
 
-    def update(self, table: str, data: Dict[str, Any], condition: str,
-               condition_params: Optional[Any] = None) -> int:
-        """更新数据。
+    def update(
+        self,
+        table: str,
+        data: Dict[str, Any],
+        condition: str,
+        condition_params: Optional[Any] = None,
+    ) -> int:
+        """Update rows only with a validated WHERE condition and parameterized values."""
+        if not isinstance(data, dict) or not data:
+            raise ValueError("update 的 data 必须是非空字典")
+        table_sql = self._quote_identifier(table, "表名")
+        condition_sql, bound_condition_params = self._prepare_condition(
+            condition, condition_params, required=True
+        )
+        if isinstance(bound_condition_params, dict):
+            # PyMySQL does not allow mixing positional and named placeholders in
+            # one statement, so convert SET values to generated named parameters.
+            prefix = "__set_value_"
+            while any(f"{prefix}{index}" in bound_condition_params for index in range(len(data))):
+                prefix = f"_{prefix}"
+            set_items = []
+            params = dict(bound_condition_params)
+            for index, (key, value) in enumerate(data.items()):
+                param_name = f"{prefix}{index}"
+                set_items.append(
+                    f"{self._quote_identifier(key, '字段名')} = %({param_name})s"
+                )
+                params[param_name] = value
+            set_clause = ", ".join(set_items)
+        else:
+            set_clause = ", ".join(
+                f"{self._quote_identifier(key, '字段名')} = %s" for key in data
+            )
+            params = tuple(data.values()) + tuple(bound_condition_params or ())
 
-        Args:
-            table (str): 表名。
-            data (Dict[str, Any]): 更新的数据，字典形式。
-            condition (str): 更新条件。
-            condition_params (Optional[Any], optional): 更新条件的参数，默认为 None。
-
-        Returns:
-            int: 受影响的行数。
-        """
-        set_clause = ", ".join([f"{key} = %s" for key in data.keys()])
-        sql = f"UPDATE {table} SET {set_clause} WHERE {condition}"
-        params = tuple(data.values())
-        if condition_params:
-            if isinstance(condition_params, tuple):
-                params += condition_params
-            elif isinstance(condition_params, dict):
-                params += tuple(condition_params.values())
+        sql = f"UPDATE {table_sql} SET {set_clause} WHERE {condition_sql}"
         return self.execute_update(sql, params)
 
-    def delete(self, table: str, condition: str,
-               condition_params: Optional[Any] = None) -> int:
-        """删除数据。
-
-        Args:
-            table (str): 表名。
-            condition (str): 删除条件。
-            condition_params (Optional[Any], optional): 删除条件的参数，默认为 None。
-
-        Returns:
-            int: 受影响的行数。
-        """
-        sql = f"DELETE FROM {table} WHERE {condition}"
-        return self.execute_update(sql, condition_params)
+    def delete(
+        self,
+        table: str,
+        condition: str,
+        condition_params: Optional[Any] = None,
+    ) -> int:
+        """Delete rows only with a validated WHERE condition and parameterized values."""
+        table_sql = self._quote_identifier(table, "表名")
+        condition_sql, params = self._prepare_condition(
+            condition, condition_params, required=True
+        )
+        sql = f"DELETE FROM {table_sql} WHERE {condition_sql}"
+        return self.execute_update(sql, params)
 
     def select(
-            self,
-            table: str,
-            columns: Optional[List[str]] = None,
-            condition: Optional[str] = None,
-            condition_params: Optional[Any] = None,
-            order_by: Optional[str] = None
+        self,
+        table: str,
+        columns: Optional[List[str]] = None,
+        condition: Optional[str] = None,
+        condition_params: Optional[Any] = None,
+        order_by: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        """查询数据。
+        """Select using validated identifiers/conditions and parameterized values."""
+        table_sql = self._quote_identifier(table, "表名")
+        if columns is None or columns == []:
+            columns_sql = "*"
+        else:
+            if isinstance(columns, str):
+                raise ValueError("columns 必须是字段名列表，而不是字符串")
+            columns_sql = ", ".join(self._format_column(column) for column in columns)
 
-        Args:
-            table (str): 表名。
-            columns (Optional[List[str]], optional): 查询的列，默认为所有列。
-            condition (Optional[str], optional): 查询条件，默认为 None。
-            condition_params (Optional[Any], optional): 查询条件的参数，默认为 None。
-            order_by (Optional[str], optional): 排序条件，例如 "age ASC" 或 "name DESC"，默认为 None。
-
-        Returns:
-            List[Dict[str, Any]]: 查询结果列表，每个元素为字典形式。
-        """
-        # 构建查询列
-        columns_str = ", ".join(columns) if columns else "*"
-
-        # 构建 SQL 查询语句
-        sql = f"SELECT {columns_str} FROM {table}"
-
-        # 添加查询条件
-        if condition:
-            sql += f" WHERE {condition}"
-
-        # 添加排序条件
+        condition_sql, params = self._prepare_condition(
+            condition, condition_params, required=False
+        )
+        sql = f"SELECT {columns_sql} FROM {table_sql}"
+        if condition_sql:
+            sql += f" WHERE {condition_sql}"
         if order_by:
-            sql += f" ORDER BY {order_by}"
-
-        # 执行查询并返回结果
-        return self.execute_query(sql, condition_params)
+            sql += f" ORDER BY {self._format_order_by(order_by)}"
+        return self.execute_query(sql, params)

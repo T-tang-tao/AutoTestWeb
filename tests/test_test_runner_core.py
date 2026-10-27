@@ -470,6 +470,40 @@ class same_case(Base):
     assert runner._loaded_module_names == []
 
 
+def test_cleanup_resources_disconnects_database_client(runner_class, tmp_path):
+    case_file = _write_case(
+        tmp_path,
+        "database_resource_case",
+        """
+from TestRunner.core.Base import Base
+
+class FakeDatabaseClient:
+    def __init__(self):
+        self.disconnected = False
+
+    def disconnect(self):
+        self.disconnected = True
+
+class database_resource_case(Base):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.db = FakeDatabaseClient()
+
+    def defineSteps(self):
+        self.def_step("simple step", lambda: None)
+""",
+    )
+    runner = _make_runner(runner_class, tmp_path, case_file)
+    runner.run()
+
+    database_client = runner.test_instances[0].db
+    runner.cleanup_resources()
+
+    assert database_client.disconnected
+    assert runner.test_instances == []
+    assert runner._loaded_module_names == []
+
+
 def test_runner_instances_keep_results_isolated(runner_class, tmp_path):
     good_file = _write_case(
         tmp_path,
