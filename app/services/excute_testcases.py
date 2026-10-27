@@ -101,7 +101,7 @@ class TestTask:
 
         return {
             "task_id": self.task_id,
-            "task_status": task_status,
+            "status": task_status,
             "progress": self._current_progress(),
             "created_at": created_at.isoformat(timespec="seconds"),
             "start_time": start_time.isoformat(timespec="seconds") if start_time else None,
