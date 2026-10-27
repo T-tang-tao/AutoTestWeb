@@ -414,7 +414,7 @@ class TestRunner:
                 f"{type(e).__name__}: {e}"
             )
             self.load_errors.append(error_msg)
-            self.test_set_error = "\\n".join(self.load_errors)
+            self.test_set_error = "; ".join(self.load_errors)
             self.logger.error(error_msg)
             self.logger.debug(f"[异常堆栈] {traceback.format_exc()}")
             return None
