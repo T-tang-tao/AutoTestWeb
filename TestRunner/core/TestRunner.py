@@ -27,6 +27,8 @@ class TestRunner:
         self.logger.info("===== 初始化测试运行器 =====")
         # 测试用例实例列表
         self.test_instances: List[Any] = []
+        self._loaded_module_names: List[str] = []
+        self._module_counter = 0
 
         self.total_set_cases_num = 0  # 测试套总用例数（配置中定义的）
         self.loaded_cases_num = 0  # 实际加载成功的用例数
@@ -133,6 +135,7 @@ class TestRunner:
             self.test_set_error = self.test_set_error or str(exc)
             self.overall_end_time = self.overall_end_time or time_now()
             self._refresh_stats()
+            self._cleanup_loaded_modules()
             self.is_running = False
             raise
 
@@ -213,6 +216,7 @@ class TestRunner:
                 self.logger.info("=" * 60)
 
                 self._log_test_summary()
+                self._cleanup_loaded_modules()
                 self.is_running = False
         else:
             self.logger.error("[测试结束] 测试套初始化失败，终止执行")
@@ -224,6 +228,7 @@ class TestRunner:
                     self.test_set_error = "测试套中没有成功加载任何用例"
             self.overall_end_time = self.overall_end_time or time_now()
             self._refresh_stats()
+            self._cleanup_loaded_modules()
             self.is_running = False
             return
 
@@ -391,21 +396,25 @@ class TestRunner:
             raise e
 
     def _load_case_instance(self, case_path: str):
-        """加载测试用例模块并创建实例（新增：绑定case_name）"""
+        """Load one case with a task-unique module key to avoid cross-run collisions."""
         full_path = self.base_dir / Path(case_path)
         module_name = full_path.stem
+        self._module_counter += 1
+        module_key = (
+            f"_autotestweb_case_{self.task_id.replace('-', '')}_"
+            f"{self._module_counter}_{module_name}"
+        )
 
         try:
-            # 加载模块（原有逻辑）
-            spec = importlib.util.spec_from_file_location(module_name, full_path)
+            spec = importlib.util.spec_from_file_location(module_key, full_path)
             if not spec or not spec.loader:
                 raise ImportError(f"无法创建模块规格: {full_path}")
 
             module = importlib.util.module_from_spec(spec)
-            sys.modules[module_name] = module
+            sys.modules[module_key] = module
             spec.loader.exec_module(module)
 
-            # 查找测试类（约定：类名与模块名相同）
+            # Keep the file/class naming convention independent from the import key.
             test_class = getattr(module, module_name, None)
             if not test_class:
                 self.test_set_error = f"模块中未找到测试类 {module_name} (约定类名与模块名一致)"
@@ -416,10 +425,14 @@ class TestRunner:
             instance = test_class(params=self.params, user_cookie=self.user_cookie) if self.params else test_class(
                 user_cookie=self.user_cookie)
             instance.case_name = case_name  # 将case_name绑定到实例
+            self._loaded_module_names.append(module_key)
             self.logger.debug(f"[模块加载] 成功加载用例: {case_name} (类名: {module_name})")
             return instance
 
         except Exception as e:
+            sys.modules.pop(module_key, None)
+            if module_key in self._loaded_module_names:
+                self._loaded_module_names.remove(module_key)
             error_msg = (
                 f"[模块加载] 加载模块 {module_name} 失败: "
                 f"{type(e).__name__}: {e}"
@@ -429,6 +442,18 @@ class TestRunner:
             self.logger.error(error_msg)
             self.logger.debug(f"[异常堆栈] {traceback.format_exc()}")
             return None
+
+    def _cleanup_loaded_modules(self) -> None:
+        """Remove temporary module registrations created by this runner."""
+        for module_name in self._loaded_module_names:
+            sys.modules.pop(module_name, None)
+        self._loaded_module_names.clear()
+
+    def cleanup_resources(self) -> None:
+        """Release case instances after an external task has captured its result."""
+        self._cleanup_loaded_modules()
+        self.test_instances.clear()
+        self.results.clear()
 
     def _get_case_name_from_file(self, file_path: Path) -> str:
         """从测试用例文件中静态解析case_name（不执行代码）"""

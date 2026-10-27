@@ -192,6 +192,9 @@ class passing_case(Base):
     assert details["progress"]["case_stats"]["passed"] == runner.stats["passed"]
     assert details["progress"]["steps_stats"]["passed_steps"] == 1
     assert runner._calculate_progress() == 100.0
+    assert runner._loaded_module_names == []
+    module_prefix = f"_autotestweb_case_{runner.task_id.replace('-', '')}_"
+    assert not any(name.startswith(module_prefix) for name in sys.modules)
 
 
 def test_assertion_failure_marks_step_and_skips_remaining_steps(runner_class, tmp_path):
@@ -423,6 +426,48 @@ def test_empty_suite_finishes_with_failed_status_and_end_time(runner_class, tmp_
     assert runner.stats == {
         "total": 0, "passed": 0, "failed": 0, "error": 0, "skipped": 0
     }
+
+
+def test_same_case_filename_in_different_directories_does_not_collide(
+    runner_class, tmp_path
+):
+    left_dir = tmp_path / "left"
+    right_dir = tmp_path / "right"
+    left_dir.mkdir()
+    right_dir.mkdir()
+    source_template = """
+from TestRunner.core.Base import Base
+
+class same_case(Base):
+    def defineSteps(self):
+        self.marker = "{marker}"
+        self.def_step("step", self.pass_step)
+
+    def pass_step(self):
+        return None
+"""
+    left_file = left_dir / "same_case.py"
+    right_file = right_dir / "same_case.py"
+    left_file.write_text(source_template.format(marker="left"), encoding="utf-8")
+    right_file.write_text(source_template.format(marker="right"), encoding="utf-8")
+    runner = runner_class({
+        "TestBed": {"env": "unit-test"},
+        "TestSet": {"test_cases": [
+            {"path": "left/same_case.py"},
+            {"path": "right/same_case.py"},
+        ]},
+        "base_dir": str(tmp_path),
+    })
+
+    runner.run()
+
+    assert runner.test_set_status == RunnerTestStatus.PASS.value
+    assert len(runner.test_instances) == 2
+    assert [case.marker for case in runner.test_instances] == ["left", "right"]
+    assert runner.test_instances[0].__class__.__module__ != (
+        runner.test_instances[1].__class__.__module__
+    )
+    assert runner._loaded_module_names == []
 
 
 def test_runner_instances_keep_results_isolated(runner_class, tmp_path):
