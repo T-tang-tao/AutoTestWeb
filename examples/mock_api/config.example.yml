@@ -1,0 +1,15 @@
+TestBed:
+  env: mock-api
+  HuiXin:
+    host: http://127.0.0.1
+    users: {}
+
+TestSet:
+  test_cases:
+    - path: test_cases/product_success.py
+    - path: test_cases/order_success.py
+    - path: test_cases/business_error.py
+    - path: test_cases/validation_error.py
+    - path: test_cases/delayed_response.py
+
+base_dir: .
