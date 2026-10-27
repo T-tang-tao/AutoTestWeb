@@ -322,28 +322,23 @@ def test_nested_transactions_are_rejected_without_committing_inner_work(db_clien
     assert connection.commits == 1
     assert connection.rollbacks == 0
 
-def test_transaction_can_roll_back_successful_test_data(db_module, monkeypatch):
-    client, connection = make_client(db_module, monkeypatch)
+def test_transaction_can_roll_back_successful_test_data(db_client):
+    client, connection, _, _ = db_client
 
     with client.transaction(rollback_on_success=True):
-        client.execute_update(
-            "INSERT INTO users (user_name) VALUES (%s)",
-            ("temporary-user",),
-        )
+        client.insert("users", {"user_name": "temporary-user"})
 
-    assert connection.begin_count == 1
-    assert connection.commit_count == 0
-    assert connection.rollback_count == 1
+    assert connection.begins == 1
+    assert connection.commits == 0
+    assert connection.rollbacks == 1
 
 
 @pytest.mark.parametrize("operation", ["execute_query", "execute_update"])
 def test_caught_database_error_still_marks_transaction_for_rollback(
-    db_module, monkeypatch, operation
+    db_client, operation
 ):
-    connection = FakeConnection(fail_execute=True)
-    client, connection = make_client(
-        db_module, monkeypatch, connection=connection
-    )
+    client, connection, _, _ = db_client
+    connection.fail_execute = True
 
     with pytest.raises(RuntimeError, match="事务中的数据库操作失败"):
         with client.transaction():
@@ -356,5 +351,5 @@ def test_caught_database_error_still_marks_transaction_for_rollback(
                 # A caught DB error must still prevent the outer transaction commit.
                 pass
 
-    assert connection.commit_count == 0
-    assert connection.rollback_count == 1
+    assert connection.commits == 0
+    assert connection.rollbacks == 1
