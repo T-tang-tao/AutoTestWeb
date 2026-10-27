@@ -314,6 +314,60 @@ class registration_error_case(Base):
     }
 
 
+def test_teardown_failure_is_recorded_as_case_error(runner_class, tmp_path):
+    case_file = _write_case(
+        tmp_path,
+        "teardown_error_case",
+        """
+from TestRunner.core.Base import Base
+
+class teardown_error_case(Base):
+    def defineSteps(self):
+        self.def_step("normal step", lambda: None)
+
+    def tearDown(self):
+        raise RuntimeError("teardown failed")
+""",
+    )
+    runner = _make_runner(runner_class, tmp_path, case_file)
+
+    runner.run()
+
+    instance = runner.test_instances[0]
+    assert runner.test_set_status == RunnerTestStatus.FAIL.value
+    assert instance.test_status == RunnerTestStatus.ERROR.value
+    assert "teardown failed" in instance.error
+    assert instance.step_plans[0]["status"] == RunnerStepStatus.PASS.value
+    assert runner.stats["error"] == 1
+
+
+def test_module_without_conventional_test_class_is_not_counted_as_pass(
+    runner_class, tmp_path
+):
+    case_file = _write_case(
+        tmp_path,
+        "module_without_case_class",
+        """
+from TestRunner.core.Base import Base
+
+class DifferentName(Base):
+    def defineSteps(self):
+        pass
+""",
+    )
+    runner = _make_runner(runner_class, tmp_path, case_file)
+
+    runner.run()
+
+    assert runner.test_set_status == RunnerTestStatus.FAIL.value
+    assert runner.test_set_error
+    assert "未找到测试类" in runner.test_set_error
+    assert runner.stats == {
+        "total": 1, "passed": 0, "failed": 0, "error": 1, "skipped": 0
+    }
+    assert runner._calculate_progress() == 100.0
+
+
 def test_missing_case_path_is_rejected_during_config_validation(runner_class, tmp_path):
     with pytest.raises(ValueError, match="路径不存在"):
         runner_class({
