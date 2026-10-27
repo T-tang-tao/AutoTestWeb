@@ -325,6 +325,8 @@ python -m pytest -q
 
 The unit tests mock the TestRunner's external service dependencies and do not require local business credentials or a live test system.
 
+Application factory and isolated test configuration are documented in [docs/app-factory.md](docs/app-factory.md).
+
 Database client transaction semantics, supported SQL helper conditions, and resource cleanup rules are documented in [docs/database-client.md](docs/database-client.md).
 
 ## License
