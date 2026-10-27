@@ -55,7 +55,7 @@ def _validate_test_cases(test_cases):
             relative_path.is_absolute()
             or PureWindowsPath(raw_path).is_absolute()
             or ".." in relative_path.parts
-            or not relative_path.suffix == ".py"
+            or relative_path.suffix != ".py"
         ):
             raise APIError(
                 f"test_cases[{index}].path 必须是仓库业务目录下的 Python 相对路径",
