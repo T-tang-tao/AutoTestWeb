@@ -183,6 +183,7 @@ class DataBaseClient:
         self.logger = LoggerManager().get_logger()
         self._lock = RLock()
         self._transaction_depth = 0
+        self._transaction_failed = False
         self.connection = None
         self.connect()
 
@@ -344,7 +345,9 @@ class DataBaseClient:
                     cursor.execute(sql, params)
                     return cursor.fetchall()
             except Exception:
-                if self._transaction_depth == 0 and self.connection is not None:
+                if self._transaction_depth:
+                    self._transaction_failed = True
+                elif self.connection is not None:
                     self.connection.rollback()
                 raise
 
@@ -360,28 +363,38 @@ class DataBaseClient:
                     self.connection.commit()
                 return rowcount
             except Exception:
-                if self._transaction_depth == 0 and self.connection is not None:
+                if self._transaction_depth:
+                    self._transaction_failed = True
+                elif self.connection is not None:
                     self.connection.rollback()
                 raise
 
     @contextmanager
-    def transaction(self):
-        """Commit the whole block on success; roll back and re-raise on any error.
+    def transaction(self, *, rollback_on_success: bool = False):
+        """Commit a successful block or roll it back when explicitly requested.
 
-        Nested transactions are intentionally not supported because this client does
-        not implement savepoints. Callers should create one transaction per unit of
-        work and keep all related updates inside that block.
+        Set rollback_on_success=True for disposable test writes that must never
+        persist. Any database operation error marks the transaction as failed, even
+        when the caller catches the original exception inside the block. Nested
+        transactions are not supported because this client has no savepoints.
         """
         with self._lock:
             self._ensure_connection()
             if self._transaction_depth:
                 raise RuntimeError("不支持嵌套事务，请将操作放入同一事务上下文")
             self._transaction_depth = 1
+            self._transaction_failed = False
             try:
                 self.connection.begin()
                 yield
-                self.connection.commit()
-                self.logger.debug("Transaction committed.")
+                if self._transaction_failed:
+                    raise RuntimeError("事务中的数据库操作失败，已回滚；当前事务不会提交")
+                if rollback_on_success:
+                    self.connection.rollback()
+                    self.logger.debug("Transaction rolled back by request.")
+                else:
+                    self.connection.commit()
+                    self.logger.debug("Transaction committed.")
             except Exception as exc:
                 try:
                     if self.connection is not None:
@@ -392,6 +405,7 @@ class DataBaseClient:
                 raise
             finally:
                 self._transaction_depth = 0
+                self._transaction_failed = False
 
     def insert(self, table: str, data: Dict[str, Any]) -> int:
         """Insert a row; table/column names are validated and values are parameterized."""

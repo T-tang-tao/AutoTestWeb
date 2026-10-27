@@ -321,3 +321,35 @@ def test_nested_transactions_are_rejected_without_committing_inner_work(db_clien
     assert connection.begins == 1
     assert connection.commits == 1
     assert connection.rollbacks == 0
+
+def test_transaction_can_roll_back_successful_test_data(db_client):
+    client, connection, _, _ = db_client
+
+    with client.transaction(rollback_on_success=True):
+        client.insert("users", {"user_name": "temporary-user"})
+
+    assert connection.begins == 1
+    assert connection.commits == 0
+    assert connection.rollbacks == 1
+
+
+@pytest.mark.parametrize("operation", ["execute_query", "execute_update"])
+def test_caught_database_error_still_marks_transaction_for_rollback(
+    db_client, operation
+):
+    client, connection, _, _ = db_client
+    connection.fail_execute = True
+
+    with pytest.raises(RuntimeError, match="事务中的数据库操作失败"):
+        with client.transaction():
+            try:
+                if operation == "execute_query":
+                    client.execute_query("SELECT id FROM users")
+                else:
+                    client.execute_update("UPDATE users SET active = %s", (1,))
+            except RuntimeError:
+                # A caught DB error must still prevent the outer transaction commit.
+                pass
+
+    assert connection.commits == 0
+    assert connection.rollbacks == 1
