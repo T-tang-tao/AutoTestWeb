@@ -31,6 +31,7 @@ class TestRunner:
         self.total_set_cases_num = 0  # 测试套总用例数（配置中定义的）
         self.loaded_cases_num = 0  # 实际加载成功的用例数
         self.test_set_error = None  # 测试套错误消息
+        self.load_errors: List[str] = []  # 未能加载的用例及错误原因
         self.test_set_status = TestStatus.PENDING.value  # 测试套整体状态（核心优化：初始化为待执行）
         self.test_set_all_steps_num = 0  # 所有测试步骤数量（计算进度用）
 
@@ -124,7 +125,18 @@ class TestRunner:
     # -------------------------
     def _execute_tests(self):
         """执行所有测试用例的主流程"""
-        if self._init_test_cases():
+        try:
+            cases_initialized = self._init_test_cases()
+        except Exception as exc:
+            # Initialization failures are framework errors, not assertion failures.
+            self.test_set_status = TestStatus.ERROR.value
+            self.test_set_error = self.test_set_error or str(exc)
+            self.overall_end_time = self.overall_end_time or time_now()
+            self._refresh_stats()
+            self.is_running = False
+            raise
+
+        if cases_initialized:
             try:
                 if self.loaded_cases_num == 0:
                     self.logger.warning("[测试执行] 无可用测试用例，终止执行")
@@ -182,11 +194,15 @@ class TestRunner:
 
                 # 所有用例执行完毕或被终止后更新测试套状态
                 # 检查所有用例是否全部通过
-                all_passed = all(
-                    test.test_status == TestStatus.PASS.value
-                    for test in self.test_instances
+                all_passed = (
+                    not self.load_errors
+                    and all(
+                        test.test_status == TestStatus.PASS.value
+                        for test in self.test_instances
+                    )
                 )
                 self.test_set_status = TestStatus.PASS.value if all_passed else TestStatus.FAIL.value
+                self._refresh_stats()
             finally:
                 self.overall_end_time = time_now()
                 total_duration = time_diff(self.overall_start_time, self.overall_end_time)
@@ -201,6 +217,14 @@ class TestRunner:
         else:
             self.logger.error("[测试结束] 测试套初始化失败，终止执行")
             self.test_set_status = TestStatus.FAIL.value
+            if not self.test_set_error:
+                if self.total_set_cases_num == 0:
+                    self.test_set_error = "测试套中没有配置用例"
+                else:
+                    self.test_set_error = "测试套中没有成功加载任何用例"
+            self.overall_end_time = self.overall_end_time or time_now()
+            self._refresh_stats()
+            self.is_running = False
             return
 
     def _init_test_cases(self):
@@ -224,6 +248,12 @@ class TestRunner:
                 # 加载用例实例
                 case_instance = self._load_case_instance(case_path)
                 if not case_instance:
+                    if not self.load_errors:
+                        error_msg = f"[用例加载] 第{idx}个用例加载失败: {case_path}"
+                        self.load_errors.append(error_msg)
+                        self.test_set_error = error_msg
+                    # A failed-to-load case is still an accounted-for case.
+                    self.completed_tests += 1
                     self.logger.error(f"[用例加载] 第{idx}个用例加载失败，跳过该用例")
                     continue
                 self.logger.info(f"[测试步骤加载] 开始加载用例测试步骤")
@@ -390,7 +420,13 @@ class TestRunner:
             return instance
 
         except Exception as e:
-            self.logger.error(f"[模块加载] 加载模块 {module_name} 失败: {str(e)}")
+            error_msg = (
+                f"[模块加载] 加载模块 {module_name} 失败: "
+                f"{type(e).__name__}: {e}"
+            )
+            self.load_errors.append(error_msg)
+            self.test_set_error = "; ".join(self.load_errors)
+            self.logger.error(error_msg)
             self.logger.debug(f"[异常堆栈] {traceback.format_exc()}")
             return None
 
@@ -418,7 +454,36 @@ class TestRunner:
         """计算测试进度百分比"""
         if self.total_set_cases_num == 0:
             return 100.0
-        return (self.completed_tests / self.total_set_cases_num) * 100
+        return min(100.0, (self.completed_tests / self.total_set_cases_num) * 100)
+
+    def _refresh_stats(self) -> None:
+        """Update aggregate case counts from the final per-case results."""
+        error_count = (
+            sum(
+                1 for case in self.test_instances
+                if case.test_status == TestStatus.ERROR.value
+            )
+            + len(self.load_errors)
+        )
+        if self.total_set_cases_num and self.test_set_error and error_count == 0:
+            error_count = 1
+
+        self.stats = {
+            "total": self.total_set_cases_num,
+            "passed": sum(
+                1 for case in self.test_instances
+                if case.test_status == TestStatus.PASS.value
+            ),
+            "failed": sum(
+                1 for case in self.test_instances
+                if case.test_status == TestStatus.FAIL.value
+            ),
+            "error": error_count,
+            "skipped": sum(
+                1 for case in self.test_instances
+                if case.test_status == TestStatus.SKIP.value
+            ),
+        }
 
     def _log_test_summary(self):
         """打印测试总结报告（结构化输出）"""
