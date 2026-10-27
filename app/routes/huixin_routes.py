@@ -4,7 +4,6 @@ from flask import Blueprint, request
 
 from app.services.excute_testcases import TestTaskManager, submit_test_task, execute_test_task
 from utils.response import api_response, APIError
-from utils.ConfigLoader import ConfigLoader
 
 huixin_bp = Blueprint('huixin', __name__)
 
