@@ -70,7 +70,7 @@ def create_report():
 
     }]
     # 报告任务也走统一提交入口，并使用独立配置副本。
-    config = deepcopy(ConfigLoader.config)
+    config = deepcopy(configLoader.config)
     config['TestSet']['test_cases'] = case
     task_id = submit_test_task(config, data)
 
