@@ -134,8 +134,10 @@ python -m TestRunner.runner
 
 ```bash
 python -m pip install -r requirements-dev.txt
-python -m pytest -q
+python -m pytest -q --cov=TestRunner --cov=app --cov=utils --cov-branch --cov-report=term-missing:skip-covered --cov-report=xml:coverage.xml --cov-report=html:htmlcov
 ```
+
+覆盖率统计 `TestRunner/`、`app/` 和 `utils/` 三个核心代码目录，不把测试文件、Mock API 示例和第三方依赖计入统计范围。命令会在终端输出摘要，并生成 `coverage.xml` 与 `htmlcov/index.html`。CI 会为 Python 3.10、3.11、3.12 分别上传覆盖率 artifact，可在对应 GitHub Actions 运行页面下载。项目尚未设定硬性覆盖率门槛，先基于实际报告建立基线；覆盖率是测试范围指标，不等同于真实业务环境的集成验证。
 
 只运行 Mock API 端到端演示测试：
 
@@ -149,6 +151,7 @@ CI 在推送和面向 `main` 的 Pull Request 上运行，矩阵覆盖 Python 3.
 
 - [架构与执行链路](docs/architecture.md)：模块边界、时序图、设计取舍和已知限制。
 - [测试策略与质量保障](docs/testing-strategy.md)：分层测试、数据隔离、失败分类与 CI 范围。
+- [覆盖率报告说明](docs/coverage.md)：覆盖范围、本地复现命令、CI artifact 和指标边界。
 - [测试用例编写指南](docs/test-case-guide.md)：命名、步骤注册、参数传递和失败路径限制。
 - [Mock API 演示指南](docs/mock-api-demo.md)：本地服务、API 场景与运行说明。
 - [应用工厂与测试配置](docs/app-factory.md)：独立 Flask app 与内存配置。

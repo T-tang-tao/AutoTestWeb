@@ -61,11 +61,29 @@ jobs:
           --select E4,E7,E9,F
           --ignore F401
 
-      - name: Run unit tests
-        run: python -m pytest -q
+      - name: Run unit tests with core coverage
+        run: >-
+          python -m pytest -q
+          --cov=TestRunner
+          --cov=app
+          --cov=utils
+          --cov-branch
+          --cov-report=term-missing:skip-covered
+          --cov-report=xml:coverage.xml
+          --cov-report=html:htmlcov
 
       - name: Run Mock API demo
         run: python examples/mock_api/run_demo.py --report-path reports/mock-api-demo-report.html
+
+      - name: Upload core coverage reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-coverage-python-${{ matrix.python-version }}
+          path: |
+            coverage.xml
+            htmlcov/
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Upload Mock API HTML report
         uses: actions/upload-artifact@v4
