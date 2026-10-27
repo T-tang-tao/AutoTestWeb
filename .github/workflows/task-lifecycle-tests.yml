@@ -43,6 +43,9 @@ jobs:
           utils/LoggerManager.py
           utils/task_state.py
 
+      - name: Compile demo modules
+        run: python -m compileall -q examples/mock_api
+
       - name: Run Ruff correctness checks
         run: >-
           ruff check
@@ -51,6 +54,7 @@ jobs:
           app/services/excute_testcases.py
           app/routes/huixin_routes.py
           utils/task_state.py
+          examples/mock_api
           tests
           --select E4,E7,E9,F
           --ignore F401
