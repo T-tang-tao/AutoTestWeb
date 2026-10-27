@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="860" viewBox="0 0 1200 860" role="img" aria-labelledby="title desc">
+  <title id="title">AutoTestWeb Mock API 真实执行结果摘要</title>
+  <desc id="desc">来自 GitHub Actions 实际运行的 TestRunner 任务：任务 completed，测试套通过，五个用例全部通过，生成了 HTML 报告。</desc>
+  <defs>
+    <linearGradient id="header" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#132b43"/>
+      <stop offset="100%" stop-color="#244c65"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="860" rx="22" fill="#f4f7fb"/>
+  <rect x="0" y="0" width="1200" height="148" rx="22" fill="url(#header)"/>
+  <rect x="0" y="124" width="1200" height="24" fill="url(#header)"/>
+  <text x="46" y="48" fill="#b8d3e5" font-size="16" font-family="Segoe UI, Arial, sans-serif" letter-spacing="2">AUTOTESTWEB · REAL RUN SUMMARY</text>
+  <text x="46" y="90" fill="#ffffff" font-size="32" font-weight="700" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif">Mock API 执行报告</text>
+  <text x="46" y="120" fill="#d3e2ed" font-size="16" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif">来源：GitHub Actions 运行 #40455785051 · Python 3.12 · 2026-10-27</text>
+  <rect x="940" y="48" width="210" height="44" rx="22" fill="#d9f5e5"/>
+  <circle cx="966" cy="70" r="7" fill="#138a4b"/>
+  <text x="984" y="76" fill="#11633b" font-size="16" font-family="Segoe UI, Arial, sans-serif" font-weight="700">TASK COMPLETED</text>
+  <g font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif">
+    <rect x="44" y="176" width="265" height="118" rx="14" fill="#ffffff" stroke="#d9e3ed"/>
+    <text x="66" y="207" fill="#627487" font-size="15">任务状态</text>
+    <text x="66" y="251" fill="#147a48" font-size="30" font-weight="700">completed</text>
+    <text x="66" y="275" fill="#687b8d" font-size="13">后台任务已进入终态</text>
+    <rect x="327" y="176" width="265" height="118" rx="14" fill="#ffffff" stroke="#d9e3ed"/>
+    <text x="349" y="207" fill="#627487" font-size="15">测试套状态</text>
+    <text x="349" y="251" fill="#147a48" font-size="30" font-weight="700">通过</text>
+    <text x="349" y="275" fill="#687b8d" font-size="13">TestRunner 执行结果</text>
+    <rect x="610" y="176" width="265" height="118" rx="14" fill="#ffffff" stroke="#d9e3ed"/>
+    <text x="632" y="207" fill="#627487" font-size="15">通过用例</text>
+    <text x="632" y="251" fill="#147a48" font-size="30" font-weight="700">5 / 5</text>
+    <text x="632" y="275" fill="#687b8d" font-size="13">全部示例用例成功</text>
+    <rect x="893" y="176" width="263" height="118" rx="14" fill="#ffffff" stroke="#d9e3ed"/>
+    <text x="915" y="207" fill="#627487" font-size="15">失败 / 错误 / 跳过</text>
+    <text x="915" y="251" fill="#147a48" font-size="30" font-weight="700">0 / 0 / 0</text>
+    <text x="915" y="275" fill="#687b8d" font-size="13">执行统计来自该次运行</text>
+  </g>
+  <rect x="44" y="316" width="1112" height="484" rx="14" fill="#ffffff" stroke="#d9e3ed"/>
+  <text x="68" y="354" fill="#253d52" font-size="22" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-weight="700">用例与步骤结果</text>
+  <text x="1130" y="352" fill="#748697" font-size="13" text-anchor="end" font-family="Segoe UI, Arial, sans-serif">5 CASES · 10 STEPS PASSED</text>
+  <rect x="64" y="375" width="1072" height="42" rx="8" fill="#edf3f8"/>
+  <g font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" fill="#52677b" font-size="14" font-weight="700">
+    <text x="82" y="401">测试用例</text>
+    <text x="470" y="401">步骤执行</text>
+    <text x="1052" y="401" text-anchor="middle">状态</text>
+  </g>
+  <g font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="15">
+    <rect x="64" y="428" width="1072" height="65" rx="8" fill="#fbfcfe"/>
+    <text x="82" y="455" fill="#253d52" font-weight="600">查询商品成功</text>
+    <text x="82" y="477" fill="#8091a0" font-size="12">Mock API · product_success</text>
+    <text x="470" y="455" fill="#425a6e">请求已存在商品</text>
+    <text x="470" y="477" fill="#425a6e">校验商品响应字段</text>
+    <rect x="1001" y="445" width="102" height="30" rx="15" fill="#d9f5e5"/>
+    <text x="1052" y="465" fill="#11633b" font-size="13" font-weight="700" text-anchor="middle">通过</text>
+
+    <rect x="64" y="498" width="1072" height="65" rx="8" fill="#ffffff"/>
+    <text x="82" y="525" fill="#253d52" font-weight="600">创建订单成功</text>
+    <text x="82" y="547" fill="#8091a0" font-size="12">Mock API · order_success</text>
+    <text x="470" y="525" fill="#425a6e">提交有效订单</text>
+    <text x="470" y="547" fill="#425a6e">校验订单创建结果</text>
+    <rect x="1001" y="515" width="102" height="30" rx="15" fill="#d9f5e5"/>
+    <text x="1052" y="535" fill="#11633b" font-size="13" font-weight="700" text-anchor="middle">通过</text>
+
+    <rect x="64" y="568" width="1072" height="65" rx="8" fill="#fbfcfe"/>
+    <text x="82" y="595" fill="#253d52" font-weight="600">业务错误码</text>
+    <text x="82" y="617" fill="#8091a0" font-size="12">Mock API · business_error</text>
+    <text x="470" y="595" fill="#425a6e">请求不存在的商品</text>
+    <text x="470" y="617" fill="#425a6e">校验业务错误码</text>
+    <rect x="1001" y="585" width="102" height="30" rx="15" fill="#d9f5e5"/>
+    <text x="1052" y="605" fill="#11633b" font-size="13" font-weight="700" text-anchor="middle">通过</text>
+
+    <rect x="64" y="638" width="1072" height="65" rx="8" fill="#ffffff"/>
+    <text x="82" y="665" fill="#253d52" font-weight="600">参数校验失败</text>
+    <text x="82" y="687" fill="#8091a0" font-size="12">Mock API · validation_error</text>
+    <text x="470" y="665" fill="#425a6e">提交无效订单参数</text>
+    <text x="470" y="687" fill="#425a6e">校验 400 和字段错误</text>
+    <rect x="1001" y="655" width="102" height="30" rx="15" fill="#d9f5e5"/>
+    <text x="1052" y="675" fill="#11633b" font-size="13" font-weight="700" text-anchor="middle">通过</text>
+
+    <rect x="64" y="708" width="1072" height="65" rx="8" fill="#fbfcfe"/>
+    <text x="82" y="735" fill="#253d52" font-weight="600">可控延迟响应</text>
+    <text x="82" y="757" fill="#8091a0" font-size="12">Mock API · delayed_response</text>
+    <text x="470" y="735" fill="#425a6e">请求延迟 0.08 秒的接口</text>
+    <text x="470" y="757" fill="#425a6e">校验延迟参数和响应</text>
+    <rect x="1001" y="725" width="102" height="30" rx="15" fill="#d9f5e5"/>
+    <text x="1052" y="745" fill="#11633b" font-size="13" font-weight="700" text-anchor="middle">通过</text>
+  </g>
+  <text x="44" y="834" fill="#657a8b" font-size="14" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif">结果源自真实 TestTaskManager + TestRunner 执行。完整终端日志与 HTML 报告可在 GitHub Actions 运行记录中核验。</text>
+</svg>
