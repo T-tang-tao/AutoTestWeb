@@ -38,6 +38,7 @@ Demo 会在 `127.0.0.1` 启动临时 Mock API，运行 5 个 TestRunner 示例�
 
 ```json
 {
+  "task_status": "completed",
   "status": "通过",
   "stats": {
     "total": 5,
@@ -45,11 +46,16 @@ Demo 会在 `127.0.0.1` 启动临时 Mock API，运行 5 个 TestRunner 示例�
     "failed": 0,
     "error": 0,
     "skipped": 0
-  }
+  },
+  "report_path": "reports/mock-api-demo-report.html"
 }
 ```
 
-GitHub Actions 也会实际运行 `python examples/mock_api/run_demo.py`。查看 [CI 运行记录](https://github.com/T-tang-tao/AutoTestWeb/actions/workflows/task-lifecycle-tests.yml) 可检查测试矩阵、Demo 命令输出和失败细节。上面的结果属于 Mock API 示例执行，不代表私有业务系统已完成回归。
+GitHub Actions 也会实际运行该命令，并上传 HTML 报告 artifact（每个 Python 版本一份，保留 14 天）。[查看已验证的真实运行 #40455785051](https://github.com/T-tang-tao/AutoTestWeb/actions/runs/40455785051)，其中包含任务级状态、执行统计、完整用例/步骤结果和报告生成日志。上面的摘要与下图依据该次 Python 3.12 运行结果整理；它属于本地 Mock API 示例，不代表私有业务系统已完成回归。
+
+![基于真实 GitHub Actions 执行结果整理的 Mock API 报告摘要](docs/images/mock-api-demo-result.svg)
+
+本地运行后，HTML 报告默认写到 `reports/mock-api-demo-report.html`，也可以通过 `--report-path` 指定保存位置。
 
 ## Demo 场景
 
