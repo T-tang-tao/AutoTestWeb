@@ -68,6 +68,15 @@ class LoggerManager:
 
         self._logger.debug('日志配置加载完成，日志文件：%s', log_file)
 
+    @classmethod
+    def configure(cls, config: dict):
+        """Apply an explicit logging configuration to the shared logger."""
+        if cls._instance is None:
+            cls(config=config)
+        else:
+            cls._instance._init_logger(config)
+        return cls._instance
+
     def get_logger(self):
         return self._logger
 
