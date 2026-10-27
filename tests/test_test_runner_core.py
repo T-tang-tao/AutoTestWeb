@@ -181,9 +181,9 @@ class passing_case(Base):
     instance = runner.test_instances[0]
     details = runner.get_test_instances_details()
     assert runner.test_set_status == RunnerTestStatus.PASS.value
-    assert instance.test_status == TestStatus.PASS.value
+    assert instance.test_status == RunnerTestStatus.PASS.value
     assert instance.events == ["setUp", "step", "tearDown"]
-    assert instance.step_plans[0]["status"] == StepStatus.PASS.value
+    assert instance.step_plans[0]["status"] == RunnerStepStatus.PASS.value
     assert instance.execute_start_time is not None
     assert instance.execute_end_time is not None
     assert runner.stats == {
@@ -219,10 +219,10 @@ class assertion_case(Base):
     runner.run()
 
     instance = runner.test_instances[0]
-    assert runner.test_set_status == TestStatus.FAIL.value
-    assert instance.test_status == TestStatus.FAIL.value
+    assert runner.test_set_status == RunnerTestStatus.FAIL.value
+    assert instance.test_status == RunnerTestStatus.FAIL.value
     assert [step["status"] for step in instance.step_plans] == [
-        StepStatus.FAIL.value, StepStatus.SKIP.value
+        RunnerStepStatus.FAIL.value, RunnerStepStatus.SKIP.value
     ]
     assert instance.step_plans[1]["skip_reason"]
     assert not instance.after_failure_ran
@@ -252,9 +252,9 @@ class runtime_error_case(Base):
     runner.run()
 
     instance = runner.test_instances[0]
-    assert runner.test_set_status == TestStatus.FAIL.value
-    assert instance.test_status == TestStatus.ERROR.value
-    assert instance.step_plans[0]["status"] == StepStatus.ERROR.value
+    assert runner.test_set_status == RunnerTestStatus.FAIL.value
+    assert instance.test_status == RunnerTestStatus.ERROR.value
+    assert instance.step_plans[0]["status"] == RunnerStepStatus.ERROR.value
     assert "RuntimeError" in instance.step_plans[0]["error"]
     assert runner.stats["error"] == 1
     assert runner.stats["failed"] == 0
@@ -280,11 +280,11 @@ class setup_error_case(Base):
     runner.run()
 
     instance = runner.test_instances[0]
-    assert instance.test_status == TestStatus.ERROR.value
+    assert instance.test_status == RunnerTestStatus.ERROR.value
     assert instance.execute_end_time is not None
     assert "setup failed" in instance.error
     assert runner.stats["error"] == 1
-    assert runner.test_set_status == TestStatus.FAIL.value
+    assert runner.test_set_status == RunnerTestStatus.FAIL.value
 
 
 def test_missing_case_path_is_rejected_during_config_validation(runner_class, tmp_path):
@@ -320,7 +320,7 @@ class valid_case(Base):
 
     runner.run()
 
-    assert runner.test_set_status == TestStatus.FAIL.value
+    assert runner.test_set_status == RunnerTestStatus.FAIL.value
     assert runner.load_errors
     assert "SyntaxError" in runner.test_set_error
     assert runner.stats == {
@@ -334,7 +334,7 @@ def test_empty_suite_finishes_with_failed_status_and_end_time(runner_class, tmp_
 
     runner.run()
 
-    assert runner.test_set_status == TestStatus.FAIL.value
+    assert runner.test_set_status == RunnerTestStatus.FAIL.value
     assert runner.test_set_error == "测试套中没有配置用例"
     assert runner.overall_start_time is not None
     assert runner.overall_end_time is not None
@@ -379,8 +379,8 @@ class isolated_bad_case(Base):
     good_runner.run()
     bad_runner.run()
 
-    assert good_runner.test_set_status == TestStatus.PASS.value
-    assert bad_runner.test_set_status == TestStatus.FAIL.value
-    assert good_runner.test_instances[0].test_status == TestStatus.PASS.value
-    assert bad_runner.test_instances[0].test_status == TestStatus.FAIL.value
+    assert good_runner.test_set_status == RunnerTestStatus.PASS.value
+    assert bad_runner.test_set_status == RunnerTestStatus.FAIL.value
+    assert good_runner.test_instances[0].test_status == RunnerTestStatus.PASS.value
+    assert bad_runner.test_instances[0].test_status == RunnerTestStatus.FAIL.value
     assert good_runner.test_instances is not bad_runner.test_instances
