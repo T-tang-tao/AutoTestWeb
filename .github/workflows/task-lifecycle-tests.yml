@@ -35,8 +35,12 @@ jobs:
           python -m py_compile
           TestRunner/core/TestRunner.py
           TestRunner/services/DataBaseClient.py
-          app/services/excute_testcases.py
+          app/__init__.py
+          app/routes/base_routes.py
           app/routes/huixin_routes.py
+          app/services/excute_testcases.py
+          utils/ConfigLoader.py
+          utils/LoggerManager.py
           utils/task_state.py
 
       - name: Run Ruff correctness checks

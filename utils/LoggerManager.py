@@ -25,7 +25,7 @@ class LoggerManager:
             'level': logging.DEBUG,
             'format': "%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d - %(funcName)s] - %(message)s",
             'console_output': True,
-            'log_file':f"logs/app_{datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")}.log",  # 改为动态生成，由外部传入或默认生成
+            'log_file': f"logs/app_{datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}.log",  # 改为动态生成，由外部传入或默认生成
             'max_bytes': 10 * 1024 * 1024,  # 10MB
             'backup_count': 5
         }
@@ -67,6 +67,15 @@ class LoggerManager:
             self._logger.addHandler(file_handler)
 
         self._logger.debug('日志配置加载完成，日志文件：%s', log_file)
+
+    @classmethod
+    def configure(cls, config: dict):
+        """Apply an explicit logging configuration to the shared logger."""
+        if cls._instance is None:
+            cls(config=config)
+        else:
+            cls._instance._init_logger(config)
+        return cls._instance
 
     def get_logger(self):
         return self._logger
