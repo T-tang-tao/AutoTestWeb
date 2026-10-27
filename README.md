@@ -88,16 +88,47 @@ flowchart LR
 
 ## 常用 API
 
+新开发的客户端优先使用通用、带版本号的 `/api/v1` 接口。它们不绑定 HuiXin 项目；测试用例路径相对于当前配置中的业务用例根目录。
+
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |
-| `GET` | `/` | 健康检查 |
-| `GET` | `/getTestCases` | 获取可发现的测试用例 |
-| `POST` | `/huixin/executeTestCases` | 提交测试任务 |
-| `GET` | `/huixin/getTaskStatus/<task_id>` | 查询任务状态与执行结果 |
-| `GET` | `/huixin/getTaskReport/<task_id>` | 下载任务 HTML 报告 |
-| `POST` | `/huixin/saveConfig` | 保存 TestBed 配置 |
+| `GET` | `/api/v1/test-cases` | 获取可用测试用例，返回相对路径 |
+| `GET` | `/api/v1/config/test-bed` | 查询 TestBed 测试环境配置 |
+| `PUT` | `/api/v1/config/test-bed` | 替换 TestBed 测试环境配置 |
+| `POST` | `/api/v1/tasks` | 提交指定用例列表，返回任务 ID |
+| `GET` | `/api/v1/tasks/<task_id>` | 查询任务状态、进度与执行结果 |
+| `GET` | `/api/v1/tasks/<task_id>/report` | 下载任务 HTML 报告 |
 
-任务创建后会返回 `task_id`。任务级状态包括 `pending`、`running`、`completed`、`failed` 和 `error`。任务状态与 TestRunner 内部用例、步骤使用的中文状态并非同一组枚举。
+### 提交任务示例
+
+```json
+{
+  "test_cases": [
+    {
+      "path": "PrisonAssessmentSystem/TestCases/Assessment/InPrison/inmate_assessment_criminal_base_info_01.py",
+      "name": "inmate_assessment_criminal_base_info_01"
+    }
+  ],
+  "params": {}
+}
+```
+
+`test_cases` 是必填的非空数组；每个元素包含相对于业务用例根目录的 Python 文件路径，`name` 可省略。业务参数放在 `params` 对象中。任务提交成功后返回 HTTP 202 和 `task_id`。任务级状态包括 `pending`、`running`、`completed`、`failed` 和 `error`；它们与 TestRunner 内部用例、步骤使用的中文状态不同。
+
+### HuiXin 旧接口兼容
+
+为了不立即破坏现有调用方，旧路径仍可用；新客户端不应再依赖它们。
+
+| 方法 | 旧路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/huixin/getConfig` | TestBed 配置读取兼容入口 |
+| `POST` | `/huixin/saveConfig` | 旧配置保存入口，保留 HuiXin 用户 ID 兼容处理 |
+| `POST` | `/huixin/executeTestCases` | 使用 `assessment` 代码选择 PrisonAssessmentSystem 用例的旧入口 |
+| `GET` | `/huixin/getTaskStatus/<task_id>` | 任务状态兼容入口 |
+| `GET` | `/huixin/getTaskReport/<task_id>` | HTML 报告下载兼容入口 |
+| `POST` | `/huixin/createReport` | PrisonAssessmentSystem 专属业务用例，不属于通用报告下载 API |
+
+任务与配置接口已使用通用路由；只有业务专属的 `createReport` 和旧版评估映射继续放在 HuiXin 兼容层。
 
 ## 运行自己的测试环境
 
