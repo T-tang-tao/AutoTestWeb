@@ -336,6 +336,8 @@ python -m pytest -q
 
 The unit tests mock the TestRunner's external service dependencies and do not require local business credentials or a live test system.
 
+The module map, request/task execution sequence and current design trade-offs are documented in [docs/architecture.md](docs/architecture.md).
+
 Test layers, test-data isolation, failure classification and CI coverage boundaries are documented in [docs/testing-strategy.md](docs/testing-strategy.md).
 
 Test case naming, step structure, parameter handling and result states are documented in [docs/test-case-guide.md](docs/test-case-guide.md).
