@@ -251,6 +251,28 @@ class TaskLifecycleServiceTests(unittest.TestCase):
         self.assertIsNone(self.manager.get_task(expired_id))
         self.assertIs(self.manager.get_task(running_id), running)
 
+    def test_thread_start_failure_marks_task_error_and_records_end_time(self):
+        class BrokenThread:
+            def __init__(self, target, args, name, daemon):
+                self.target = target
+                self.args = args
+
+            def start(self):
+                raise RuntimeError("thread could not start")
+
+        before = set(self.manager._tasks)
+        with patch.object(self.service, "Thread", BrokenThread):
+            with self.assertRaisesRegex(RuntimeError, "thread could not start"):
+                self.service.submit_test_task({"TestSet": {"test_cases": []}})
+
+        new_ids = set(self.manager._tasks) - before
+        self.assertEqual(len(new_ids), 1)
+        task = self.manager.get_task(new_ids.pop())
+        self.assertEqual(task.status, "error")
+        self.assertIn("thread could not start", task.error)
+        self.assertIsNotNone(task.end_time)
+        self.assertIsNone(task.runner)
+
     def test_submit_test_task_uses_one_execution_entry_point(self):
         class InlineThread:
             def __init__(self, target, args, name, daemon):
