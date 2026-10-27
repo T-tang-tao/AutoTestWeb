@@ -11,12 +11,16 @@
         .fail {{ background-color: #fce8e6; color: #cf1322; }}
         .error {{ background-color: #fff7e6; color: #d48806; }}
         .skip {{ background-color: #e6f7ff; color: #1d7ddc; }}
-        .test-list { border-collapse: collapse; width: 100%; }
-        .test-list th, .test-list td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-        .test-list th { background-color: #f8f8f8; }
-        .steps { list-style: none; padding-left: 20px; }
-        .step-fail { color: #cf1322; }
-        .step-error { color: #d48806; }
+        .test-list {{ border-collapse: collapse; width: 100%; }}
+        .test-list th, .test-list td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
+        .test-list th {{ background-color: #f8f8f8; }}
+        .status-pass, .step-pass {{ color: #389e0d; }}
+        .status-fail, .step-fail {{ color: #cf1322; }}
+        .status-error, .step-error {{ color: #d48806; }}
+        .status-skip, .step-skip {{ color: #1d7ddc; }}
+        .steps {{ list-style: none; padding-left: 20px; }}
+        .step-fail {{ color: #cf1322; }}
+        .step-error {{ color: #d48806; }}
     </style>
 </head>
 <body>

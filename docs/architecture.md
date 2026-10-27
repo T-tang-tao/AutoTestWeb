@@ -21,8 +21,8 @@ flowchart TD
     Runner --> Login[HuiXin_login / TestBed users]
     TaskAPI --> Snapshot[Cached JSON-safe result snapshot]
     Snapshot --> StatusAPI[getTaskStatus]
-    Runner -. standalone utility .-> ReportGen[ReportGenerator]
-    Demo[examples/mock_api] <--> Runner
+    Demo --> ReportGen[ReportGenerator]
+    Demo[examples/mock_api] --> TaskAPI
 ```
 
 ### 模块职责
@@ -41,7 +41,7 @@ flowchart TD
 | `utils/ConfigLoader.py` | 从主 YAML 加载 TestBed/TestSet 并解析路径 | 每次构造为独立对象，避免不同 app 共享配置状态 |
 | `utils/LoggerManager.py` | 配置和提供共享 logging logger | 普通应用在工厂创建时应用项目日志配置；测试 app 不改共享日志配置 |
 | `utils/response.py` | 把路由结果转成统一 JSON success/error envelope | 路由装饰器会捕获通用异常并返回 HTTP 500；此层不是本次数据库/HTTP 客户端错误模型的统一化 |
-| `TestRunner/extensions/ReportGenerator.py` | 提供基于模板写出 HTML 报告的独立工具类 | 当前任务状态查询返回的是结果 JSON 快照；该类没有被 `getTaskStatus` 路由直接调用 |
+| `TestRunner/extensions/ReportGenerator.py` | 提供基于模板写出 HTML 报告的工具类 | Mock API Demo 命令用它从任务结果快照生成 HTML；任务状态查询路由本身仍直接返回 JSON，不会自动生成报告 |
 | `examples/mock_api/` | 提供本地 HTTP 示例服务、5 个示例用例和一条命令的执行入口 | 专门用于隔离演示，不替代真实业务集成回归 |
 
 ## 2. 提交任务到查询结果的时序

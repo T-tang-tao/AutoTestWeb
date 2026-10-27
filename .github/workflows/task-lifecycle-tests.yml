@@ -35,6 +35,7 @@ jobs:
           python -m py_compile
           TestRunner/core/TestRunner.py
           TestRunner/services/DataBaseClient.py
+          TestRunner/extensions/ReportGenerator.py
           app/__init__.py
           app/routes/base_routes.py
           app/routes/huixin_routes.py
@@ -51,6 +52,7 @@ jobs:
           ruff check
           TestRunner/core/TestRunner.py
           TestRunner/services/DataBaseClient.py
+          TestRunner/extensions/ReportGenerator.py
           app/services/excute_testcases.py
           app/routes/huixin_routes.py
           utils/task_state.py
@@ -61,3 +63,14 @@ jobs:
 
       - name: Run unit tests
         run: python -m pytest -q
+
+      - name: Run Mock API demo
+        run: python examples/mock_api/run_demo.py --report-path reports/mock-api-demo-report.html
+
+      - name: Upload Mock API HTML report
+        uses: actions/upload-artifact@v4
+        with:
+          name: mock-api-report-python-${{ matrix.python-version }}
+          path: reports/mock-api-demo-report.html
+          if-no-files-found: error
+          retention-days: 14
