@@ -1,10 +1,9 @@
-from threading import Thread
+from copy import deepcopy
 
 from flask import Blueprint, request
 
-from app.services.excute_testcases import run_test_task, TestTaskManager, execute_test_task
+from app.services.excute_testcases import TestTaskManager, submit_test_task, execute_test_task
 from utils.response import api_response, APIError
-from utils.ConfigLoader import ConfigLoader
 
 huixin_bp = Blueprint('huixin', __name__)
 
@@ -41,17 +40,12 @@ def start_test():
     if not test_cases:
         raise APIError("缺少测试用例配置", 500)
 
-    config = configLoader.config
+    # 每个任务使用独立配置副本，避免并发请求互相覆盖测试用例。
+    config = deepcopy(configLoader.config)
     config['TestSet']['test_cases'] = test_cases
+    task_id = submit_test_task(config, params)
 
-    # 创建任务并启动执行
-    task_manager = TestTaskManager()
-    task_id = task_manager.create_task(config)
-    thread = Thread(target=run_test_task, args=(task_id, params))
-    thread.daemon = True
-    thread.start()
-
-    return {"task_id": task_id, "status": "pending"}, "任务已启动"
+    return {"task_id": task_id, "status": TestTaskManager().get_task(task_id).status}, "任务已启动"
 
 
 @huixin_bp.route('/getTaskStatus/<task_id>', methods=['GET'])
@@ -74,16 +68,12 @@ def create_report():
         'name': 'create_report',
 
     }]
-    config = ConfigLoader.config
+    # 报告任务也走统一提交入口，并使用独立配置副本。
+    config = deepcopy(configLoader.config)
     config['TestSet']['test_cases'] = case
-    # 创建任务并启动执行
-    task_manager = TestTaskManager()
-    task_id = task_manager.create_task(config)
-    thread = Thread(target=run_test_task, kwargs={'task_id': task_id, 'params': data})
-    thread.daemon = True
-    thread.start()
+    task_id = submit_test_task(config, data)
 
-    return {"task_id": task_id, "status": "pending"}, "任务已启动"
+    return {"task_id": task_id, "status": TestTaskManager().get_task(task_id).status}, "任务已启动"
 #
 # @app.route('/api/tests/<task_id>/cancel', methods=['POST'])
 # def cancel_test(task_id):
