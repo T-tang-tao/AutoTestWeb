@@ -39,10 +39,14 @@ def test_mock_api_success_business_error_validation_and_delay_contracts():
     assert invalid_delay.get_json()["code"] == "VALIDATION_ERROR"
 
 
-def test_real_test_runner_executes_all_mock_api_cases_without_local_configs():
-    summary = run_demo()
+def test_real_test_runner_executes_all_mock_api_cases_without_local_configs(tmp_path):
+    report_path = tmp_path / "mock-api-demo-report.html"
+    summary = run_demo(report_path=str(report_path))
 
     assert summary["status"] == "通过"
+    assert summary["task_status"] == "completed"
+    assert summary["duration"] >= 0
+    assert summary["error"] is None
     assert summary["stats"] == {
         "total": 5,
         "passed": 5,
@@ -50,6 +54,13 @@ def test_real_test_runner_executes_all_mock_api_cases_without_local_configs():
         "error": 0,
         "skipped": 0,
     }
+    assert summary["report_path"] == str(report_path)
+    assert report_path.exists()
+    report_html = report_path.read_text(encoding="utf-8")
+    assert "测试执行报告" in report_html
+    assert "通过：5" in report_html
+    assert "Mock API：查询商品成功" in report_html
+    assert "Mock API：可控延迟响应" in report_html
     assert len(summary["test_cases"]) == 5
     assert all(case["status"] == "通过" for case in summary["test_cases"])
     assert all(
