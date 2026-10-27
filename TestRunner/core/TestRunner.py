@@ -261,6 +261,9 @@ class TestRunner:
                     self.completed_tests += 1
                     self.logger.error(f"[用例加载] 第{idx}个用例加载失败，跳过该用例")
                     continue
+                # Register the instance before defining steps so failure cleanup
+                # can still close resources created in the case constructor.
+                self.test_instances.append(case_instance)
                 self.logger.info("[测试步骤加载] 开始加载用例测试步骤")
                 self.logger.debug(
                     '[备注] 只记录测试步骤，如果在测试步骤加载完成之前执行了代码，说明defineSteps 中的def_step 没有实现懒加载数据')
@@ -268,7 +271,6 @@ class TestRunner:
                 step_count = len(case_instance.step_plans)
                 self.logger.info(f"[测试步骤加载] 成功 用例 {case_path} 包含 {step_count} 个测试步骤")
                 self.test_set_all_steps_num += step_count
-                self.test_instances.append(case_instance)
                 self.loaded_cases_num += 1  # 记录加载成功的用例数
                 self.logger.info(
                     f"[用例加载] 第{idx}个用例加载成功，包含步骤数: {step_count}，初始状态: {case_instance.test_status}")
@@ -450,7 +452,24 @@ class TestRunner:
         self._loaded_module_names.clear()
 
     def cleanup_resources(self) -> None:
-        """Release case instances after an external task has captured its result."""
+        """Close per-case database clients and release instances/modules after snapshot."""
+        seen_resources = set()
+        for instance in list(self.test_instances):
+            database_client = getattr(instance, "db", None)
+            if database_client is None or id(database_client) in seen_resources:
+                continue
+            seen_resources.add(id(database_client))
+            disconnect = getattr(database_client, "disconnect", None)
+            if callable(disconnect):
+                try:
+                    disconnect()
+                except Exception as exc:
+                    self.logger.error(
+                        "[资源清理] 关闭用例数据库连接失败: %s",
+                        exc,
+                        exc_info=True,
+                    )
+
         self._cleanup_loaded_modules()
         self.test_instances.clear()
         self.results.clear()
