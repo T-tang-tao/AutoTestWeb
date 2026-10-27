@@ -61,6 +61,7 @@ def create_app(
     app.config["DEFAULT_CHARSET"] = "utf-8"
     if test_config:
         app.config.update(test_config)
+    app.config.setdefault("TASK_REPORTS_DIR", str(PROJECT_ROOT / "reports" / "tasks"))
 
     if config_loader is not None:
         loader = config_loader

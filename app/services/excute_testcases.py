@@ -2,10 +2,12 @@ import uuid
 from copy import deepcopy
 from datetime import datetime, timedelta
 from enum import Enum
+from pathlib import Path
 from threading import Lock, RLock, Thread
 from typing import Optional, Dict
 
 from TestRunner.core.TestRunner import TestRunner
+from app.services.task_report import DEFAULT_TASK_REPORT_DIR, generate_task_report
 from utils.task_state import (
     InvalidTaskTransition,
     TERMINAL_TASK_STATUSES,
@@ -78,6 +80,8 @@ class TestTask:
         self.error = None
         self.config_payload = {}
         self.result_details = {}
+        self.report_path = None
+        self.report_error = None
 
     @property
     def status(self) -> str:
@@ -134,6 +138,34 @@ class TestTask:
             if runner is None or self.runner is runner:
                 self.runner = None
 
+    def set_report_path(self, report_path) -> None:
+        """Publish the successfully generated report path."""
+        with self._lock:
+            self.report_path = Path(report_path)
+            self.report_error = None
+
+    def set_report_error(self, message: str) -> None:
+        """Record report-generation failure separately from the task result."""
+        with self._lock:
+            self.report_error = str(message)
+
+    def get_report_path(self):
+        """Return the internal report path without exposing it in public payloads."""
+        with self._lock:
+            return self.report_path
+
+    def delete_report(self) -> None:
+        """Delete a cached report when the corresponding task expires."""
+        with self._lock:
+            report_path = self.report_path
+            self.report_path = None
+
+        if report_path is not None:
+            try:
+                Path(report_path).unlink(missing_ok=True)
+            except OSError:
+                logger.exception("清理过期任务报告失败: %s", self.task_id)
+
     @property
     def duration(self) -> float:
         """Elapsed wall time in seconds, live while running and fixed after finish."""
@@ -173,6 +205,8 @@ class TestTask:
             created_at = self.created_at
             result_details = deepcopy(self.result_details)
             config_payload = deepcopy(self.config_payload)
+            report_path = self.report_path
+            report_error = self.report_error
             progress = self.progress
 
         if runner is not None:
@@ -196,6 +230,12 @@ class TestTask:
         if terminal_status:
             progress = 100.0
 
+        report_available = (
+            terminal_status
+            and report_path is not None
+            and Path(report_path).is_file()
+        )
+
         return {
             "task_id": self.task_id,
             "status": task_status,
@@ -207,6 +247,9 @@ class TestTask:
             "error": error,
             "config": config_payload,
             "test_instances": test_instances,
+            "report_available": report_available,
+            "report_url": f"/huixin/getTaskReport/{self.task_id}" if report_available else None,
+            "report_error": report_error,
         }
 
 
@@ -249,28 +292,31 @@ class TestTaskManager:
         """Remove terminal tasks one hour after they finished."""
         cutoff = datetime.now() - timedelta(seconds=max_keep_time)
         with self._lock:
-            expired_ids = [
-                task_id
+            expired_tasks = [
+                (task_id, task)
                 for task_id, task in self._tasks.items()
                 if task.is_expired(cutoff)
             ]
-            for task_id in expired_ids:
+            for task_id, _task in expired_tasks:
                 del self._tasks[task_id]
 
-        if expired_ids:
-            logger.info("清理过期任务(%s个)", len(expired_ids))
+        for _task_id, task in expired_tasks:
+            task.delete_report()
+
+        if expired_tasks:
+            logger.info("清理过期任务(%s个)", len(expired_tasks))
 
 
 # ------------------------------
 # 任务提交与执行
 # ------------------------------
-def submit_test_task(config: Dict, params=None) -> str:
+def submit_test_task(config: Dict, params=None, report_dir=None) -> str:
     """Create a task and submit it through the single supported thread executor."""
     task_manager = TestTaskManager()
     task_id = task_manager.create_task(config)
     thread = Thread(
         target=run_test_task,
-        args=(task_id, params),
+        args=(task_id, params, report_dir),
         name=f"TestTask-{task_id[:8]}",
         daemon=True,
     )
@@ -286,7 +332,23 @@ def submit_test_task(config: Dict, params=None) -> str:
     return task_id
 
 
-def run_test_task(task_id: str, params=None) -> None:
+def _generate_report_for_task(task, runner, details, report_dir=None) -> None:
+    """Generate a report without allowing report failures to overwrite task status."""
+    target_dir = report_dir if report_dir is not None else DEFAULT_TASK_REPORT_DIR
+    try:
+        report_path = generate_task_report(
+            task.task_id,
+            details,
+            runner_stats=getattr(runner, "stats", None),
+            report_dir=target_dir,
+        )
+        task.set_report_path(report_path)
+    except Exception:
+        task.set_report_error("HTML 报告生成失败")
+        logger.exception("生成任务 HTML 报告失败: %s", task.task_id)
+
+
+def run_test_task(task_id: str, params=None, report_dir=None) -> None:
     """Execute one task, snapshot its result, and release runner resources."""
     task_manager = TestTaskManager()
     task = task_manager.get_task(task_id)
@@ -305,13 +367,15 @@ def run_test_task(task_id: str, params=None) -> None:
             getattr(runner, "test_set_status", None)
         )
         details = task.capture_runner_result(runner)
+        _generate_report_for_task(task, runner, details, report_dir)
         task.transition(
             final_status,
             error=_failure_summary(final_status, runner, details),
         )
     except Exception as exc:
         if runner is not None:
-            task.capture_runner_result(runner)
+            details = task.capture_runner_result(runner)
+            _generate_report_for_task(task, runner, details, report_dir)
         try:
             task.transition(TaskStatus.ERROR, error=exc)
         except InvalidTaskTransition:

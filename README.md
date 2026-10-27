@@ -118,12 +118,15 @@ python -m TestRunner.runner
 | `GET` | `/huixin/getConfig` | 获取 TestBed 配置 |
 | `POST` | `/huixin/saveConfig` | 保存 TestBed 配置 |
 | `POST` | `/huixin/executeTestCases` | 按评估类型提交测试任务 |
-| `GET` | `/huixin/getTaskStatus/<task_id>` | 查询任务状态与步骤结果 |
+| `GET` | `/huixin/getTaskStatus/<task_id>` | 查询任务状态、步骤结果与报告状态 |
+| `GET` | `/huixin/getTaskReport/<task_id>` | 下载任务生成的 HTML 测试报告 |
 | `POST` | `/huixin/createReport` | 提交固定的业务报告创建用例 |
 
-任务创建后返回 `task_id`。状态查询响应包含任务级 `status`（`pending/running/completed/failed/error`）、进度、创建/开始/结束时间、耗时、失败摘要与结果快照。TestRunner 内部用例和步骤状态使用中文枚举，与任务级状态不是同一组值。
+任务创建后返回 `task_id`。状态查询响应包含任务级 `status`（`pending/running/completed/failed/error`）、进度、创建/开始/结束时间、耗时、失败摘要与结果快照，并提供 `report_available`、`report_url` 和 `report_error`。TestRunner 内部用例和步骤状态使用中文枚举，与任务级状态不是同一组值。
 
-注意：`/huixin/createReport` 提交的是一个固定的业务报告创建用例；`TestRunner/extensions/ReportGenerator.py` 是独立 HTML 报告组件，并未被任务查询 API 直接调用。目前尚无完整的 HTML 报告下载 API 契约。
+任务结束后会尝试通过 `TestRunner/extensions/ReportGenerator.py` 生成 HTML 报告，默认保存在 `reports/tasks/<task_id>.html`（可通过 Flask 配置 `TASK_REPORTS_DIR` 覆盖目录）。当 `report_available` 为 `true` 时，可访问 `report_url` 下载报告；任务尚未结束时下载接口返回 HTTP 409，任务不存在或报告文件不可用时返回 HTTP 404，报告生成失败时返回 HTTP 500。报告生成失败只记录到 `report_error`，不会覆盖原始任务状态或测试结果；过期任务清理时也会清理对应报告文件。
+
+注意：`/huixin/createReport` 提交的是一个固定的业务报告创建用例；它与后台任务生成的 HTML 测试执行报告是两件不同的事。
 
 ## 测试与 CI
 
@@ -158,6 +161,6 @@ CI 在推送和面向 `main` 的 Pull Request 上运行，矩阵覆盖 Python 3.
 - `concurrent`、`timeout`、`depends_on` 尚未形成通用调度能力；任务级取消也尚未正式启用。
 - 用例 `setUp()` 成功后，主体步骤无论成功、断言失败或普通异常都会执行一次 `tearDown()`；`setUp()` 本身失败时则跳过主体与清理。
 - 默认 CI 不连接真实 MySQL 或私有业务系统；真实环境回归需单独执行并记录结果。
-- `ReportGenerator` 类已存在，但完整的报告保存/下载 API 尚未接通。
+- HTML 任务报告默认存放在 `reports/tasks/`，过期任务清理时会删除报告文件；任务记录仍保存在进程内，服务重启后不再提供历史下载。
 
 本仓库目前未声明开源许可证；获得明确授权前，请将代码用于查看与学习。

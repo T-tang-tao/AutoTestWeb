@@ -1,9 +1,10 @@
 from copy import deepcopy
 
-from flask import Blueprint, current_app, request
+from flask import Blueprint, current_app, request, send_file
 
 from app.services.excute_testcases import TestTaskManager, submit_test_task, execute_test_task
 from utils.response import api_response, APIError
+from utils.task_state import TERMINAL_TASK_STATUSES
 
 huixin_bp = Blueprint('huixin', __name__)
 
@@ -44,7 +45,9 @@ def start_test():
     # 每个任务使用独立配置副本，避免并发请求互相覆盖测试用例。
     config = deepcopy(_config_loader().config)
     config['TestSet']['test_cases'] = test_cases
-    task_id = submit_test_task(config, params)
+    task_id = submit_test_task(
+        config, params, report_dir=current_app.config.get("TASK_REPORTS_DIR")
+    )
 
     return {"task_id": task_id, "status": TestTaskManager().get_task(task_id).status}, "任务已启动"
 
@@ -57,6 +60,32 @@ def get_task_status(task_id: str):
     if not task:
         raise APIError({"error": "任务不存在或已过期"}, 404)
     return task.to_dict()
+
+
+@huixin_bp.route('/getTaskReport/<task_id>', methods=['GET'])
+@api_response
+def get_task_report(task_id: str):
+    """Download a task's generated HTML report."""
+    task = TestTaskManager().get_task(task_id)
+    if not task:
+        raise APIError("任务不存在或已过期", 404)
+
+    terminal_states = {status.value for status in TERMINAL_TASK_STATUSES}
+    if task.status not in terminal_states:
+        raise APIError("任务尚未结束，报告暂不可下载", 409)
+
+    report_path = task.get_report_path()
+    if report_path is None or not report_path.is_file():
+        if task.report_error:
+            raise APIError("测试报告生成失败", 500)
+        raise APIError("测试报告不存在或已过期", 404)
+
+    return send_file(
+        report_path,
+        mimetype="text/html",
+        as_attachment=True,
+        download_name=f"autotest-report-{task.task_id}.html",
+    )
 
 
 @huixin_bp.route('/createReport', methods=['POST'])
@@ -72,7 +101,9 @@ def create_report():
     # 报告任务也走统一提交入口，并使用独立配置副本。
     config = deepcopy(_config_loader().config)
     config['TestSet']['test_cases'] = case
-    task_id = submit_test_task(config, data)
+    task_id = submit_test_task(
+        config, data, report_dir=current_app.config.get("TASK_REPORTS_DIR")
+    )
 
     return {"task_id": task_id, "status": TestTaskManager().get_task(task_id).status}, "任务已启动"
 #
