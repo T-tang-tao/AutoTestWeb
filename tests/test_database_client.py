@@ -172,7 +172,7 @@ def test_standalone_update_failure_rolls_back_and_closes_cursor(db_client):
 def test_disconnect_then_query_reconnects_and_stores_new_connection(db_client, monkeypatch):
     client, first_connection, connect, module = db_client
     second_connection = FakeConnection()
-    connect.side_effect = [first_connection, second_connection]
+    connect.side_effect = [second_connection]
 
     client.disconnect()
     assert first_connection.closed
