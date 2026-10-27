@@ -28,6 +28,7 @@ class TestRunner:
         # 测试用例实例列表
         self.test_instances: List[Any] = []
         self._loaded_module_names: List[str] = []
+        self._module_counter = 0
 
         self.total_set_cases_num = 0  # 测试套总用例数（配置中定义的）
         self.loaded_cases_num = 0  # 实际加载成功的用例数
@@ -398,7 +399,11 @@ class TestRunner:
         """Load one case with a task-unique module key to avoid cross-run collisions."""
         full_path = self.base_dir / Path(case_path)
         module_name = full_path.stem
-        module_key = f"_autotestweb_case_{self.task_id.replace('-', '')}_{module_name}"
+        self._module_counter += 1
+        module_key = (
+            f"_autotestweb_case_{self.task_id.replace('-', '')}_"
+            f"{self._module_counter}_{module_name}"
+        )
 
         try:
             spec = importlib.util.spec_from_file_location(module_key, full_path)
