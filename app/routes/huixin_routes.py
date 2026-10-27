@@ -2,7 +2,7 @@
 
 from flask import Blueprint, request
 
-from app.services.excute_testcases import execute_test_task
+from app.services.huixin_testcases import get_huixin_test_cases
 from app.routes.api_routes import (
     download_task_report_file,
     read_task_status,
@@ -54,7 +54,7 @@ def start_test():
     if not isinstance(params, dict):
         raise APIError("params 必须是 JSON 对象", status_code=400)
 
-    test_cases = execute_test_task(payload)
+    test_cases = get_huixin_test_cases(payload)
     if not test_cases:
         raise APIError("assessment 缺失或不支持，未找到对应测试用例", status_code=400)
 
