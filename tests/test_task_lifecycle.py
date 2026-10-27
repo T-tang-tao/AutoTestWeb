@@ -5,8 +5,10 @@ those external collaborators here so tests never read local YAML config or call
 the business system.
 """
 import importlib.util
+import json
 import sys
 import unittest
+from datetime import datetime, timedelta
 from pathlib import Path
 from types import ModuleType
 from unittest.mock import patch
@@ -44,8 +46,37 @@ class SuccessfulRunner:
     def _calculate_progress(self):
         return 75.0
 
+    def sample_step(self):
+        return None
+
     def get_test_instances_details(self):
-        return {"status": self.test_set_status, "test_cases": []}
+        failed = self.test_set_status == "失败"
+        return {
+            "status": self.test_set_status,
+            "progress": {
+                "case_stats": {
+                    "total_cases": 1,
+                    "passed": 0 if failed else 1,
+                    "failed": 1 if failed else 0,
+                    "error": 0,
+                }
+            },
+            "test_cases": [{
+                "test_instance_name": "sample_case",
+                "test_status": self.test_set_status,
+                "steps": [{
+                    "name": "sample step",
+                    "status": "通过",
+                    "method": self.sample_step,
+                    "kwargs": {
+                        "deferred": {
+                            "is_callable": True,
+                            "callable": self.sample_step,
+                        }
+                    },
+                }],
+            }],
+        }
 
 
 class FailedRunner(SuccessfulRunner):
@@ -104,6 +135,9 @@ class TaskLifecycleServiceTests(unittest.TestCase):
         self.assertEqual(payload["status"], "pending")
         self.assertIsNone(payload["start_time"])
         self.assertIsNone(payload["end_time"])
+        self.assertEqual(payload["duration"], 0.0)
+        self.assertEqual(payload["test_instances"], {})
+        self.assertEqual(payload["config"], {})
 
     def test_lifecycle_records_start_and_end_times(self):
         task_id = self.manager.create_task({})
@@ -113,9 +147,14 @@ class TaskLifecycleServiceTests(unittest.TestCase):
         self.assertIsNotNone(task.start_time)
         self.assertIsNone(task.end_time)
 
+        running_payload = task.to_dict()
+        self.assertGreaterEqual(running_payload["duration"], 0.0)
+
         task.transition(TaskStatus.COMPLETED)
         self.assertIsNotNone(task.end_time)
-        self.assertEqual(task.to_dict()["progress"], 100.0)
+        terminal_payload = task.to_dict()
+        self.assertEqual(terminal_payload["progress"], 100.0)
+        self.assertGreaterEqual(terminal_payload["duration"], 0.0)
 
     def test_terminal_state_cannot_transition_again(self):
         task_id = self.manager.create_task({})
@@ -136,7 +175,21 @@ class TaskLifecycleServiceTests(unittest.TestCase):
         self.assertEqual(task.status, "completed")
         self.assertIsNotNone(task.start_time)
         self.assertIsNotNone(task.end_time)
-        self.assertEqual(task.to_dict()["test_instances"]["status"], "通过")
+        payload = task.to_dict()
+        self.assertEqual(payload["test_instances"]["status"], "通过")
+        self.assertEqual(payload["config"]["TestSet"], {"test_cases": []})
+        self.assertGreaterEqual(payload["duration"], 0.0)
+        self.assertIsNone(task.runner)
+        # Bound methods and delayed callables must not keep the runner/case alive.
+        self.assertEqual(
+            payload["test_instances"]["test_cases"][0]["steps"][0]["method"],
+            "SuccessfulRunner.sample_step",
+        )
+        self.assertEqual(
+            payload["test_instances"]["test_cases"][0]["steps"][0]["kwargs"]["deferred"]["callable"],
+            "SuccessfulRunner.sample_step",
+        )
+        json.dumps(payload)
 
     def test_execution_maps_runner_failure_to_failed(self):
         task_id = self.manager.create_task({})
@@ -144,7 +197,11 @@ class TaskLifecycleServiceTests(unittest.TestCase):
 
         self.service.run_test_task(task_id)
 
-        self.assertEqual(self.manager.get_task(task_id).status, "failed")
+        task = self.manager.get_task(task_id)
+        self.assertEqual(task.status, "failed")
+        self.assertEqual(task.error, "测试套未通过：失败用例 1 个，异常用例 0 个")
+        self.assertIsNone(task.runner)
+        self.assertEqual(task.to_dict()["test_instances"]["status"], "失败")
 
     def test_runner_initialization_error_becomes_error_terminal_state(self):
         task_id = self.manager.create_task({})
@@ -156,6 +213,43 @@ class TaskLifecycleServiceTests(unittest.TestCase):
         self.assertEqual(task.status, "error")
         self.assertIn("runner initialization failed", task.error)
         self.assertIsNotNone(task.end_time)
+
+    def test_runner_execution_exception_keeps_snapshot_and_releases_runner(self):
+        class CrashingRunner(SuccessfulRunner):
+            def run(self, async_mode=False):
+                raise RuntimeError("execution crashed")
+
+        task_id = self.manager.create_task({"TestSet": {"test_cases": []}})
+        self.service.TestRunner = CrashingRunner
+
+        self.service.run_test_task(task_id)
+
+        task = self.manager.get_task(task_id)
+        payload = task.to_dict()
+        self.assertEqual(task.status, "error")
+        self.assertIn("execution crashed", task.error)
+        self.assertIsNotNone(task.end_time)
+        self.assertIsNone(task.runner)
+        self.assertEqual(payload["test_instances"]["status"], "通过")
+        json.dumps(payload)
+
+    def test_cleanup_removes_expired_terminal_tasks_but_keeps_running_tasks(self):
+        expired_id = self.manager.create_task({})
+        running_id = self.manager.create_task({})
+        expired = self.manager.get_task(expired_id)
+        running = self.manager.get_task(running_id)
+
+        expired.transition(TaskStatus.RUNNING)
+        expired.transition(TaskStatus.COMPLETED)
+        expired.end_time = datetime.now() - timedelta(hours=2)
+
+        running.transition(TaskStatus.RUNNING)
+        running.end_time = datetime.now() - timedelta(hours=2)
+
+        self.manager._cleanup_expired_tasks(max_keep_time=3600)
+
+        self.assertIsNone(self.manager.get_task(expired_id))
+        self.assertIs(self.manager.get_task(running_id), running)
 
     def test_submit_test_task_uses_one_execution_entry_point(self):
         class InlineThread:
