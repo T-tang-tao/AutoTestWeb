@@ -314,6 +314,17 @@ python -m pytest -q
 
 当前 CI 以语法/基础静态错误和隔离单元测试为覆盖重点；尚未覆盖需要真实 MySQL、私有业务系统及生产级端到端数据的测试。
 
+## Mock API 演示
+
+不依赖真实业务服务或 MySQL，直接运行本地 Mock API 和 TestRunner 示例：
+
+```bash
+python -m pip install -r requirements-dev.txt
+python examples/mock_api/run_demo.py
+```
+
+示例涵盖成功请求、业务错误码、请求参数校验失败和可控延迟，详细说明见 [Mock API 演示指南](docs/mock-api-demo.md)。
+
 ## Running tests
 
 Install the development dependencies and run the isolated unit tests:
