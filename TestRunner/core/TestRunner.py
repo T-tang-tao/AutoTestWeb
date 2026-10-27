@@ -234,14 +234,18 @@ class TestRunner:
                                 if body_error is None:
                                     test_instance.test_status = TestStatus.PASS.value
 
-                        # 记录用例结束时间和耗时
-                        test_instance.execute_end_time = time_now()
-                        test_instance.execute_duration = time_diff(test_instance.execute_start_time,
-                                                                   test_instance.execute_end_time)
-                        self.logger.info(
-                            f"[用例执行] 用例 {case_idx}/{self.loaded_cases_num}: {case_name} 执行结束，耗时: {test_instance.execute_duration:.2f}s，最终状态: {test_instance.test_status}\n")
+                    # Record timing/progress even when setUp fails.
+                    test_instance.execute_end_time = time_now()
+                    test_instance.execute_duration = time_diff(
+                        test_instance.execute_start_time, test_instance.execute_end_time
+                    )
+                    self.logger.info(
+                        f"[用例执行] 用例 {case_idx}/{self.loaded_cases_num}: "
+                        f"{case_name} 执行结束，耗时: {test_instance.execute_duration:.2f}s，"
+                        f"最终状态: {test_instance.test_status}\n"
+                    )
 
-                        self.completed_tests += 1
+                    self.completed_tests += 1
 
                 # 所有用例执行完毕或被终止后更新测试套状态
                 # 检查所有用例是否全部通过
