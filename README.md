@@ -291,6 +291,17 @@ AutoTestWeb/
 - 当前服务未实现鉴权与访问控制，请仅在受控的本地或内网开发环境中运行。
 - 提交代码前建议检查账号、密码、Token、Cookie、真实业务标识和内网地址。
 
+## Running tests
+
+Install the development dependencies and run the isolated unit tests:
+
+```bash
+python -m pip install -r requirements-dev.txt
+python -m pytest -q
+```
+
+The unit tests mock the TestRunner's external service dependencies and do not require local business credentials or a live test system.
+
 ## License
 
 本仓库目前未声明开源许可证。在获得明确授权前，代码仅用于查看与学习。
