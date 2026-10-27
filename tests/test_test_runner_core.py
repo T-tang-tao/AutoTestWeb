@@ -287,6 +287,33 @@ class setup_error_case(Base):
     assert runner.test_set_status == RunnerTestStatus.FAIL.value
 
 
+def test_step_registration_error_is_reported_as_framework_error(runner_class, tmp_path):
+    case_file = _write_case(
+        tmp_path,
+        "registration_error_case",
+        """
+from TestRunner.core.Base import Base
+
+class registration_error_case(Base):
+    def defineSteps(self):
+        raise RuntimeError("step registration failed")
+""",
+    )
+    runner = _make_runner(runner_class, tmp_path, case_file)
+
+    with pytest.raises(RuntimeError, match="step registration failed"):
+        runner.run()
+
+    assert runner.test_set_status == RunnerTestStatus.ERROR.value
+    assert "step registration failed" in runner.test_set_error
+    assert runner.overall_start_time is not None
+    assert runner.overall_end_time is not None
+    assert not runner.is_running
+    assert runner.stats == {
+        "total": 1, "passed": 0, "failed": 0, "error": 1, "skipped": 0
+    }
+
+
 def test_missing_case_path_is_rejected_during_config_validation(runner_class, tmp_path):
     with pytest.raises(ValueError, match="路径不存在"):
         runner_class({
