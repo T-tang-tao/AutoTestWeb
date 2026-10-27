@@ -123,14 +123,17 @@ cp configs/TestBed.example.yml configs/TestBed.yml
 cp configs/TestSet.example.yml configs/TestSet.yml
 ```
 
-根据实际环境编辑配置，再启动服务或执行测试集：
+根据实际环境编辑配置后，启动 Web 服务：
 
 ```bash
 python server.py
-python -m TestRunner.runner
 ```
 
-默认服务地址为 `http://127.0.0.1:5000`。
+默认服务地址为 `http://127.0.0.1:5000`。如果需要运行本地配置的测试集，请在另一个终端执行：
+
+```bash
+python -m TestRunner.runner
+```
 
 > **安全提示：** 当前服务没有完整的鉴权与访问控制能力。仅应在受控的本地或内网开发环境运行，不要直接暴露到公网。真实环境测试需要获得授权，并使用合适的测试账号与数据。
 
