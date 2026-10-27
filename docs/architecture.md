@@ -26,7 +26,7 @@ flowchart TD
     Snapshot --> StatusAPI[GET /api/v1/tasks/{task_id}]
     Snapshot --> ReportAPI[GET /api/v1/tasks/{task_id}/report]
     Demo --> ReportGen[ReportGenerator]
-    Demo[examples/mock_api] --> GenericAPI
+    Demo[examples/mock_api] --> TaskAPI
 ```
 
 ### 模块职责
