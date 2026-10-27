@@ -53,7 +53,7 @@ def _validate_test_cases(test_cases):
         relative_path = PurePosixPath(path_text)
         if (
             relative_path.is_absolute()
-            or PureWindowsPath(raw_path).is_absolute()
+            or PureWindowsPath(raw_path).is_absolute()\n            or PureWindowsPath(raw_path).drive
             or ".." in relative_path.parts
             or relative_path.suffix != ".py"
         ):
