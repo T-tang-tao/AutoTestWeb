@@ -162,38 +162,90 @@ class TestRunner:
                         f"[用例执行] 开始执行用例 {case_idx}/{self.loaded_cases_num}: {case_name}，状态: {test_instance.test_status}")
 
                     test_instance.execute_start_time = time_now()
+                    setup_succeeded = False
+
+                    # Teardown is required only after setup succeeds.
                     try:
-                        # 执行前置步骤
-                        self._run_test_case_step(test_instance, test_instance.setUp, "前置步骤", case_name)
-                        # 执行核心用例步骤
-                        self._execute_test_case(test_instance)
-                        # 执行后置步骤
-                        self._run_test_case_step(test_instance, test_instance.tearDown, "后置步骤", case_name)
-                        # 用例成功执行完成
-                        test_instance.test_status = TestStatus.PASS.value
-                        self.logger.info(
-                            f"[用例执行] 用例 {case_idx}/{self.loaded_cases_num}: {case_name} 执行成功，状态更新为: {test_instance.test_status}")
-                    except AssertionError as e:
-                        # 用例断言失败
+                        self._run_test_case_step(
+                            test_instance, test_instance.setUp, "前置步骤", case_name
+                        )
+                        setup_succeeded = True
+                    except AssertionError as exc:
                         test_instance.test_status = TestStatus.FAIL.value
                         self.logger.error(
-                            f"[用例执行] 用例 {case_idx}/{self.loaded_cases_num}: {case_name} 断言失败: {str(e)}，状态更新为: {test_instance.test_status}")
-                    except Exception as e:
-                        # 用例执行异常
+                            f"[用例执行] 用例 {case_idx}/{self.loaded_cases_num}: "
+                            f"{case_name} 前置断言失败: {exc}"
+                        )
+                    except Exception as exc:
                         test_instance.test_status = TestStatus.ERROR.value
                         self.logger.error(
-                            f"[用例执行] 用例 {case_idx}/{self.loaded_cases_num}: {case_name} 执行异常: {str(e)}，状态更新为: {test_instance.test_status}")
+                            f"[用例执行] 用例 {case_idx}/{self.loaded_cases_num}: "
+                            f"{case_name} 前置步骤异常: {exc}"
+                        )
                         self.logger.debug(f"[用例执行] 异常堆栈:\n{traceback.format_exc()}")
-                    finally:
 
-                        # 记录用例结束时间和耗时
-                        test_instance.execute_end_time = time_now()
-                        test_instance.execute_duration = time_diff(test_instance.execute_start_time,
-                                                                   test_instance.execute_end_time)
-                        self.logger.info(
-                            f"[用例执行] 用例 {case_idx}/{self.loaded_cases_num}: {case_name} 执行结束，耗时: {test_instance.execute_duration:.2f}s，最终状态: {test_instance.test_status}\n")
+                    if setup_succeeded:
+                        body_error = None
+                        try:
+                            self._execute_test_case(test_instance)
+                        except AssertionError as exc:
+                            body_error = exc
+                            test_instance.test_status = TestStatus.FAIL.value
+                            self._append_case_error(
+                                test_instance, f"[测试主体] 断言失败: {exc}"
+                            )
+                            self.logger.error(
+                                f"[用例执行] 用例 {case_idx}/{self.loaded_cases_num}: "
+                                f"{case_name} 断言失败: {exc}"
+                            )
+                        except Exception as exc:
+                            body_error = exc
+                            test_instance.test_status = TestStatus.ERROR.value
+                            self._append_case_error(
+                                test_instance,
+                                f"[测试主体] 执行异常: {type(exc).__name__}: {exc}",
+                            )
+                            self.logger.error(
+                                f"[用例执行] 用例 {case_idx}/{self.loaded_cases_num}: "
+                                f"{case_name} 执行异常: {exc}"
+                            )
+                            self.logger.debug(
+                                f"[用例执行] 异常堆栈:\n{traceback.format_exc()}"
+                            )
+                        finally:
+                            # Once setup succeeded, try cleanup exactly once,
+                            # even when the main body fails or raises.
+                            try:
+                                self._run_test_case_step(
+                                    test_instance,
+                                    test_instance.tearDown,
+                                    "后置步骤",
+                                    case_name,
+                                )
+                            except Exception as cleanup_error:
+                                if body_error is None:
+                                    test_instance.test_status = TestStatus.ERROR.value
+                                # Preserve body status and primary error. The
+                                # cleanup error is appended by the helper.
+                                self.logger.error(
+                                    f"[用例执行] 用例 {case_name} 清理失败: {cleanup_error}"
+                                )
+                            else:
+                                if body_error is None:
+                                    test_instance.test_status = TestStatus.PASS.value
 
-                        self.completed_tests += 1
+                    # Record timing/progress even when setUp fails.
+                    test_instance.execute_end_time = time_now()
+                    test_instance.execute_duration = time_diff(
+                        test_instance.execute_start_time, test_instance.execute_end_time
+                    )
+                    self.logger.info(
+                        f"[用例执行] 用例 {case_idx}/{self.loaded_cases_num}: "
+                        f"{case_name} 执行结束，耗时: {test_instance.execute_duration:.2f}s，"
+                        f"最终状态: {test_instance.test_status}\n"
+                    )
+
+                    self.completed_tests += 1
 
                 # 所有用例执行完毕或被终止后更新测试套状态
                 # 检查所有用例是否全部通过
@@ -359,6 +411,14 @@ class TestRunner:
     # -------------------------
     # 步骤执行和结果记录（其余方法保持不变）
     # -------------------------
+    def _append_case_error(self, test_instance, message: str) -> None:
+        """Append a diagnostic without overwriting the first recorded error."""
+        current_error = getattr(test_instance, "error", None)
+        if current_error:
+            test_instance.error = f"{current_error}\n{message}"
+        else:
+            test_instance.error = message
+
     def _run_test_case_step(self, test_instance, method, step_name: str, case_name: str):
         """执行测试用例级别的步骤（前置/后置）"""
         self.logger.info(f"[用例{case_name}] {step_name} 开始执行")
@@ -367,7 +427,11 @@ class TestRunner:
             self.logger.info(f"[用例{case_name}] {step_name} 执行成功")
         except Exception as e:
             self.logger.error(f"[用例{case_name}] {step_name} 执行失败: {str(e)}")
-            test_instance.error = f"[{step_name}] {case_name}  执行失败: {str(e)}  {traceback.format_exc()}"
+            error_detail = (
+                f"[{step_name}] {case_name} 执行失败: {type(e).__name__}: {e}\n"
+                f"{traceback.format_exc()}"
+            )
+            self._append_case_error(test_instance, error_detail)
             raise
 
     def _skip_remaining_steps(self, test_instance, current_step_idx: int, total_steps: int, case_name: str):

@@ -205,16 +205,27 @@ def test_assertion_failure_marks_step_and_skips_remaining_steps(runner_class, tm
 from TestRunner.core.Base import Base
 
 class assertion_case(Base):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.lifecycle_events = []
+
+    def setUp(self):
+        self.lifecycle_events.append("setUp")
+
     def defineSteps(self):
         self.after_failure_ran = False
         self.def_step("expected assertion", self.fail)
         self.def_step("must be skipped", self.after_failure)
 
     def fail(self):
+        self.lifecycle_events.append("body")
         assert False, "expected failure"
 
     def after_failure(self):
         self.after_failure_ran = True
+
+    def tearDown(self):
+        self.lifecycle_events.append("tearDown")
 """,
     )
     runner = _make_runner(runner_class, tmp_path, case_file)
@@ -229,6 +240,7 @@ class assertion_case(Base):
     ]
     assert instance.step_plans[1]["skip_reason"]
     assert not instance.after_failure_ran
+    assert instance.lifecycle_events == ["setUp", "body", "tearDown"]
     assert runner.stats["failed"] == 1
     report = runner.get_test_instances_details()
     assert report["progress"]["steps_stats"]["failed_steps"] == 1
@@ -243,11 +255,22 @@ def test_runtime_exception_is_distinct_from_assertion_failure(runner_class, tmp_
 from TestRunner.core.Base import Base
 
 class runtime_error_case(Base):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.lifecycle_events = []
+
+    def setUp(self):
+        self.lifecycle_events.append("setUp")
+
     def defineSteps(self):
         self.def_step("raises runtime error", self.explode)
 
     def explode(self):
+        self.lifecycle_events.append("body")
         raise RuntimeError("dependency unavailable")
+
+    def tearDown(self):
+        self.lifecycle_events.append("tearDown")
 """,
     )
     runner = _make_runner(runner_class, tmp_path, case_file)
@@ -259,6 +282,7 @@ class runtime_error_case(Base):
     assert instance.test_status == RunnerTestStatus.ERROR.value
     assert instance.step_plans[0]["status"] == RunnerStepStatus.ERROR.value
     assert "RuntimeError" in instance.step_plans[0]["error"]
+    assert instance.lifecycle_events == ["setUp", "body", "tearDown"]
     assert runner.stats["error"] == 1
     assert runner.stats["failed"] == 0
 
@@ -271,11 +295,22 @@ def test_setup_failure_marks_case_error_and_records_end_time(runner_class, tmp_p
 from TestRunner.core.Base import Base
 
 class setup_error_case(Base):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.lifecycle_events = []
+
     def setUp(self):
+        self.lifecycle_events.append("setUp")
         raise RuntimeError("setup failed")
 
     def defineSteps(self):
-        self.def_step("never reached", lambda: None)
+        self.def_step("never reached", self.body)
+
+    def body(self):
+        self.lifecycle_events.append("body")
+
+    def tearDown(self):
+        self.lifecycle_events.append("tearDown")
 """,
     )
     runner = _make_runner(runner_class, tmp_path, case_file)
@@ -286,6 +321,7 @@ class setup_error_case(Base):
     assert instance.test_status == RunnerTestStatus.ERROR.value
     assert instance.execute_end_time is not None
     assert "setup failed" in instance.error
+    assert instance.lifecycle_events == ["setUp"]
     assert runner.stats["error"] == 1
     assert runner.test_set_status == RunnerTestStatus.FAIL.value
 
@@ -342,6 +378,70 @@ class teardown_error_case(Base):
     assert "teardown failed" in instance.error
     assert instance.step_plans[0]["status"] == RunnerStepStatus.PASS.value
     assert runner.stats["error"] == 1
+
+
+def test_teardown_failure_does_not_overwrite_assertion_failure(
+    runner_class, tmp_path
+):
+    case_file = _write_case(
+        tmp_path,
+        "body_and_cleanup_failure",
+        """
+from TestRunner.core.Base import Base
+
+class body_and_cleanup_failure(Base):
+    def defineSteps(self):
+        self.def_step("assertion fails", self.fail_body)
+
+    def fail_body(self):
+        assert False, "primary assertion failure"
+
+    def tearDown(self):
+        raise RuntimeError("secondary cleanup failure")
+""",
+    )
+    runner = _make_runner(runner_class, tmp_path, case_file)
+
+    runner.run()
+
+    instance = runner.test_instances[0]
+    assert instance.test_status == RunnerTestStatus.FAIL.value
+    assert "primary assertion failure" in instance.error
+    assert "secondary cleanup failure" in instance.error
+    assert runner.stats["failed"] == 1
+    assert runner.stats["error"] == 0
+
+
+def test_teardown_failure_does_not_overwrite_body_runtime_error(
+    runner_class, tmp_path
+):
+    case_file = _write_case(
+        tmp_path,
+        "body_and_cleanup_runtime_error",
+        """
+from TestRunner.core.Base import Base
+
+class body_and_cleanup_runtime_error(Base):
+    def defineSteps(self):
+        self.def_step("body raises", self.explode)
+
+    def explode(self):
+        raise RuntimeError("primary body exception")
+
+    def tearDown(self):
+        raise ValueError("secondary teardown exception")
+""",
+    )
+    runner = _make_runner(runner_class, tmp_path, case_file)
+
+    runner.run()
+
+    instance = runner.test_instances[0]
+    assert instance.test_status == RunnerTestStatus.ERROR.value
+    assert "primary body exception" in instance.error
+    assert "secondary teardown exception" in instance.error
+    assert runner.stats["error"] == 1
+    assert runner.stats["failed"] == 0
 
 
 def test_module_without_conventional_test_class_is_not_counted_as_pass(
