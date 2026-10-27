@@ -336,6 +336,8 @@ python -m pytest -q
 
 The unit tests mock the TestRunner's external service dependencies and do not require local business credentials or a live test system.
 
+Test layers, test-data isolation, failure classification and CI coverage boundaries are documented in [docs/testing-strategy.md](docs/testing-strategy.md).
+
 Test case naming, step structure, parameter handling and result states are documented in [docs/test-case-guide.md](docs/test-case-guide.md).
 
 Application factory and isolated test configuration are documented in [docs/app-factory.md](docs/app-factory.md).
