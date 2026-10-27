@@ -308,7 +308,7 @@ GitHub Actions 会在 Pull Request 和分支推送时运行，测试矩阵覆盖
 ```bash
 python -m pip install -r requirements-dev.txt
 python -m py_compile TestRunner/core/TestRunner.py TestRunner/services/DataBaseClient.py app/__init__.py app/routes/base_routes.py app/routes/huixin_routes.py app/services/excute_testcases.py utils/ConfigLoader.py utils/LoggerManager.py utils/task_state.py
-ruff check TestRunner/core/TestRunner.py TestRunner/services/DataBaseClient.py app/__init__.py app/routes/base_routes.py app/routes/huixin_routes.py app/services/excute_testcases.py utils/ConfigLoader.py utils/LoggerManager.py utils/task_state.py tests --select E4,E7,E9,F --ignore F401
+ruff check TestRunner/core/TestRunner.py TestRunner/services/DataBaseClient.py app/__init__.py app/routes/base_routes.py app/routes/huixin_routes.py app/services/excute_testcases.py utils/ConfigLoader.py utils/LoggerManager.py utils/task_state.py examples/mock_api tests --select E4,E7,E9,F --ignore F401
 python -m pytest -q
 ```
 
@@ -326,6 +326,8 @@ python -m pytest -q
 The unit tests mock the TestRunner's external service dependencies and do not require local business credentials or a live test system.
 
 Application factory and isolated test configuration are documented in [docs/app-factory.md](docs/app-factory.md).
+
+The self-contained Mock API demo and one-command TestRunner run are documented in [docs/mock-api-demo.md](docs/mock-api-demo.md).
 
 Database client transaction semantics, supported SQL helper conditions, and resource cleanup rules are documented in [docs/database-client.md](docs/database-client.md).
 
