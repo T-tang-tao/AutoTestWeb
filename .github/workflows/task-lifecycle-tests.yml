@@ -38,5 +38,16 @@ jobs:
           app/routes/huixin_routes.py
           utils/task_state.py
 
+      - name: Run Ruff correctness checks
+        run: >-
+          ruff check
+          TestRunner/core/TestRunner.py
+          app/services/excute_testcases.py
+          app/routes/huixin_routes.py
+          utils/task_state.py
+          tests
+          --select E4,E7,E9,F
+          --ignore F401
+
       - name: Run unit tests
         run: python -m pytest -q

@@ -1,5 +1,7 @@
 # AutoTestWeb
 
+[![Task lifecycle tests](https://github.com/T-tang-tao/AutoTestWeb/actions/workflows/task-lifecycle-tests.yml/badge.svg?branch=main)](https://github.com/T-tang-tao/AutoTestWeb/actions/workflows/task-lifecycle-tests.yml)
+
 基于 **Flask + Python** 的自动化测试工作台，用于组织测试用例、执行多步骤业务流程、查询任务状态并沉淀可复用的测试数据与接口能力。
 
 项目将“测试资产、执行引擎、服务接口”分层，适合维护依赖登录态、数据库校验和多角色协作的复杂业务测试。
@@ -291,6 +293,26 @@ AutoTestWeb/
 - 仓库只保留 `*.example.yml` 占位模板。
 - 当前服务未实现鉴权与访问控制，请仅在受控的本地或内网开发环境中运行。
 - 提交代码前建议检查账号、密码、Token、Cookie、真实业务标识和内网地址。
+
+## CI 与质量检查
+
+GitHub Actions 会在 Pull Request 和分支推送时运行，测试矩阵覆盖 Python 3.10、3.11 和 3.12。工作流执行以下步骤：
+
+1. 安装 `requirements-dev.txt` 中的项目和开发依赖。
+2. 编译任务执行、路由和状态机等关键模块，提前发现语法错误。
+3. 使用 Ruff 检查关键模块及测试目录中的常见静态错误。
+4. 运行 `pytest` 单元测试；测试使用 mock/fake 隔离真实业务系统，不要求个人账号、Cookie 或本地私有配置。
+
+本地复现命令：
+
+```bash
+python -m pip install -r requirements-dev.txt
+python -m py_compile TestRunner/core/TestRunner.py app/services/excute_testcases.py app/routes/huixin_routes.py utils/task_state.py
+ruff check TestRunner/core/TestRunner.py app/services/excute_testcases.py app/routes/huixin_routes.py utils/task_state.py tests --select E4,E7,E9,F --ignore F401
+python -m pytest -q
+```
+
+当前 CI 以语法/基础静态错误和隔离单元测试为覆盖重点；尚未覆盖需要真实 MySQL、私有业务系统及生产级端到端数据的测试。
 
 ## Running tests
 

@@ -101,7 +101,7 @@ class TestRunner:
 
     def run(self, async_mode: bool = False) -> Optional[str]:
         """执行测试套件（同步/异步模式）"""
-        self.logger.info(f"[测试启动] 开始执行测试套")
+        self.logger.info("[测试启动] 开始执行测试套")
         # 优化：测试套开始执行时，更新状态为"运行中"
         self.test_set_status = TestStatus.RUNNING.value
         if async_mode:
@@ -261,7 +261,7 @@ class TestRunner:
                     self.completed_tests += 1
                     self.logger.error(f"[用例加载] 第{idx}个用例加载失败，跳过该用例")
                     continue
-                self.logger.info(f"[测试步骤加载] 开始加载用例测试步骤")
+                self.logger.info("[测试步骤加载] 开始加载用例测试步骤")
                 self.logger.debug(
                     '[备注] 只记录测试步骤，如果在测试步骤加载完成之前执行了代码，说明defineSteps 中的def_step 没有实现懒加载数据')
                 case_instance.defineSteps()  # 定义步骤（不执行）
