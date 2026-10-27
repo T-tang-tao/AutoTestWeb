@@ -319,6 +319,12 @@ def run_test_task(task_id: str, params=None) -> None:
         logger.error("任务执行失败: %s", exc, exc_info=True)
     finally:
         if runner is not None:
+            cleanup = getattr(runner, "cleanup_resources", None)
+            if callable(cleanup):
+                try:
+                    cleanup()
+                except Exception:
+                    logger.exception("释放 TestRunner 资源失败: %s", task_id)
             task.release_runner(runner)
 
 
