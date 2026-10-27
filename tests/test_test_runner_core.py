@@ -5,15 +5,15 @@ import sys
 from datetime import datetime
 from enum import Enum
 from types import ModuleType
-from unittest.mock import patch
+from pathlib import Path
 
 import pytest
 
 
-ROOT = __import__("pathlib").Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[1]
 
 
-class TestStatus(Enum):
+class RunnerTestStatus(Enum):
     PASS = "通过"
     FAIL = "失败"
     ERROR = "错误"
@@ -22,7 +22,7 @@ class TestStatus(Enum):
     PENDING = "待执行"
 
 
-class StepStatus(Enum):
+class RunnerStepStatus(Enum):
     PASS = "通过"
     FAIL = "失败"
     ERROR = "错误"
@@ -62,7 +62,7 @@ class CaseBase:
         }
         self.step_plans.append({
             "name": step_name,
-            "status": StepStatus.PENDING.value,
+            "status": RunnerStepStatus.PENDING.value,
             "method": method,
             "args": args or (),
             "kwargs": processed_kwargs,
@@ -99,8 +99,8 @@ def _time_diff(start, end):
 @pytest.fixture
 def runner_class(monkeypatch):
     base_module = ModuleType("TestRunner.core.Base")
-    base_module.TestStatus = TestStatus
-    base_module.StepStatus = StepStatus
+    base_module.TestStatus = RunnerTestStatus
+    base_module.StepStatus = RunnerStepStatus
     base_module.Base = CaseBase
 
     common_module = ModuleType("utils.Common")
@@ -180,7 +180,7 @@ class passing_case(Base):
 
     instance = runner.test_instances[0]
     details = runner.get_test_instances_details()
-    assert runner.test_set_status == TestStatus.PASS.value
+    assert runner.test_set_status == RunnerTestStatus.PASS.value
     assert instance.test_status == TestStatus.PASS.value
     assert instance.events == ["setUp", "step", "tearDown"]
     assert instance.step_plans[0]["status"] == StepStatus.PASS.value
