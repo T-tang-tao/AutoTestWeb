@@ -43,13 +43,16 @@ class TaskStateTests(unittest.TestCase):
             TaskStatus.ERROR,
             TaskStatus.CANCELLED,
         ):
-            with self.subTest(current=current):
-                with self.assertRaises(InvalidTaskTransition):
-                    validate_transition(current, TaskStatus.RUNNING)
+            for target in TaskStatus:
+                with self.subTest(current=current, target=target):
+                    with self.assertRaises(InvalidTaskTransition):
+                        validate_transition(current, target)
 
-    def test_pending_cannot_complete_without_running(self):
-        with self.assertRaises(InvalidTaskTransition):
-            validate_transition(TaskStatus.PENDING, TaskStatus.COMPLETED)
+    def test_pending_cannot_skip_execution(self):
+        for target in (TaskStatus.COMPLETED, TaskStatus.FAILED):
+            with self.subTest(target=target):
+                with self.assertRaises(InvalidTaskTransition):
+                    validate_transition(TaskStatus.PENDING, target)
 
     def test_runner_status_maps_to_task_status(self):
         self.assertEqual(status_from_runner("通过"), TaskStatus.COMPLETED)
