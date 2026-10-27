@@ -34,11 +34,18 @@ LOGGER = FakeLogger()
 
 
 class SuccessfulRunner:
+    instances = []
+
     def __init__(self, config, params=None):
         self.config = config
         self.params = params
         self.test_set_status = "通过"
         self.test_set_error = None
+        self.cleaned = False
+        self.__class__.instances.append(self)
+
+    def cleanup_resources(self):
+        self.cleaned = True
 
     def run(self, async_mode=False):
         self.assert_sync_mode = async_mode is False
@@ -121,6 +128,7 @@ class TaskLifecycleServiceTests(unittest.TestCase):
         self.service = load_task_service()
         self.service.TestTaskManager._instance = None
         self.manager = self.service.TestTaskManager()
+        SuccessfulRunner.instances.clear()
 
     def test_new_task_has_pending_state_and_isolated_config(self):
         config = {"TestSet": {"test_cases": [{"path": "case_a.py"}]}}
@@ -180,6 +188,7 @@ class TaskLifecycleServiceTests(unittest.TestCase):
         self.assertEqual(payload["config"]["TestSet"], {"test_cases": []})
         self.assertGreaterEqual(payload["duration"], 0.0)
         self.assertIsNone(task.runner)
+        self.assertTrue(SuccessfulRunner.instances[-1].cleaned)
         # Bound methods and delayed callables must not keep the runner/case alive.
         self.assertEqual(
             payload["test_instances"]["test_cases"][0]["steps"][0]["method"],
@@ -230,6 +239,7 @@ class TaskLifecycleServiceTests(unittest.TestCase):
         self.assertIn("execution crashed", task.error)
         self.assertIsNotNone(task.end_time)
         self.assertIsNone(task.runner)
+        self.assertTrue(SuccessfulRunner.instances[-1].cleaned)
         self.assertEqual(payload["test_instances"]["status"], "通过")
         json.dumps(payload)
 
