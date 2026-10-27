@@ -164,7 +164,7 @@ python -m TestRunner.runner
 GET /huixin/getTaskStatus/<task_id>
 ```
 
-任务状态字段为 `task_status`，可能值为 `pending`、`running`、`completed`、`failed` 或 `error`。其中 `completed` 表示测试套执行成功结束；测试套未通过时为 `failed`；任务初始化或执行过程中抛出未处理异常时为 `error`。响应同时包含任务创建/开始/结束时间、执行进度和测试用例详情。
+任务状态字段为 `status`，可能值为 `pending`、`running`、`completed`、`failed` 或 `error`。其中 `completed` 表示测试套执行成功结束；测试套未通过时为 `failed`；任务初始化或执行过程中抛出未处理异常时为 `error`。响应同时包含任务创建/开始/结束时间、执行进度和测试用例详情。
 
 ## 配置说明
 
