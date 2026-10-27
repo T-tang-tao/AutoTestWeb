@@ -1,20 +1,20 @@
 from copy import deepcopy
 
-from flask import Blueprint, request
+from flask import Blueprint, current_app, request
 
 from app.services.excute_testcases import TestTaskManager, submit_test_task, execute_test_task
-from utils.ConfigLoader import ConfigLoader
 from utils.response import api_response, APIError
 
 huixin_bp = Blueprint('huixin', __name__)
 
-configLoader = ConfigLoader()
+def _config_loader():
+    return current_app.extensions["config_loader"]
 
 
 @huixin_bp.route('/getConfig', methods=['GET'])
 @api_response
 def get_config():
-    config = configLoader.get_config()['TestBed']
+    config = _config_loader().get_config()['TestBed']
     if not config:
         raise APIError("未找到配置数据", status_code=500)
     return config
@@ -27,7 +27,7 @@ def save_config_route():
     config_data['HuiXin']['users']['criminal']['id'] = config_data['HuiXin']['users']['criminal']['username']
     if not config_data:
         raise APIError("请求体为空", status_code=400)
-    return configLoader.save_test_bed(test_bed_data=config_data), "配置保存成功", 200
+    return _config_loader().save_test_bed(test_bed_data=config_data), "配置保存成功", 200
 
 
 # 执行评估用例
@@ -42,7 +42,7 @@ def start_test():
         raise APIError("缺少测试用例配置", 500)
 
     # 每个任务使用独立配置副本，避免并发请求互相覆盖测试用例。
-    config = deepcopy(configLoader.config)
+    config = deepcopy(_config_loader().config)
     config['TestSet']['test_cases'] = test_cases
     task_id = submit_test_task(config, params)
 
@@ -70,7 +70,7 @@ def create_report():
 
     }]
     # 报告任务也走统一提交入口，并使用独立配置副本。
-    config = deepcopy(configLoader.config)
+    config = deepcopy(_config_loader().config)
     config['TestSet']['test_cases'] = case
     task_id = submit_test_task(config, data)
 
