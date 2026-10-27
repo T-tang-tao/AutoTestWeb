@@ -34,6 +34,7 @@ jobs:
         run: >-
           python -m py_compile
           TestRunner/core/TestRunner.py
+          TestRunner/services/DataBaseClient.py
           app/services/excute_testcases.py
           app/routes/huixin_routes.py
           utils/task_state.py
@@ -42,6 +43,7 @@ jobs:
         run: >-
           ruff check
           TestRunner/core/TestRunner.py
+          TestRunner/services/DataBaseClient.py
           app/services/excute_testcases.py
           app/routes/huixin_routes.py
           utils/task_state.py
