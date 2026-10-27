@@ -1,6 +1,7 @@
 import uuid
 from copy import deepcopy
 from datetime import datetime, timedelta
+from enum import Enum
 from threading import Lock, RLock, Thread
 from typing import Optional, Dict
 
@@ -16,6 +17,46 @@ from utils.LoggerManager import LoggerManager
 
 # 初始化日志
 logger = LoggerManager().get_logger()
+
+
+def _to_public_payload(value):
+    """Convert runner details into a detached, JSON-safe result snapshot."""
+    if isinstance(value, Enum):
+        return _to_public_payload(value.value)
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if callable(value):
+        return getattr(value, "__qualname__", getattr(value, "__name__", type(value).__name__))
+    if isinstance(value, dict):
+        return {str(key): _to_public_payload(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_to_public_payload(item) for item in value]
+    if hasattr(value, "isoformat") and callable(value.isoformat):
+        try:
+            return value.isoformat()
+        except (TypeError, ValueError):
+            pass
+    return str(value)
+
+
+def _failure_summary(final_status: TaskStatus, runner: TestRunner, details: Dict) -> Optional[str]:
+    """Return a concise task-level error summary while preserving detailed case results."""
+    if final_status == TaskStatus.COMPLETED:
+        return None
+
+    runner_error = getattr(runner, "test_set_error", None)
+    if runner_error:
+        return str(runner_error)
+
+    if final_status == TaskStatus.FAILED:
+        case_stats = details.get("progress", {}).get("case_stats", {})
+        failed = int(case_stats.get("failed", 0) or 0)
+        errors = int(case_stats.get("error", 0) or 0)
+        if failed or errors:
+            return f"测试套未通过：失败用例 {failed} 个，异常用例 {errors} 个"
+        return "测试套执行未通过"
+
+    return "测试任务执行异常"
 
 
 # ------------------------------
@@ -35,6 +76,8 @@ class TestTask:
         self.start_time = None
         self.end_time = None
         self.error = None
+        self.config_payload = {}
+        self.result_details = {}
 
     @property
     def status(self) -> str:
@@ -57,9 +100,48 @@ class TestTask:
             self._status = next_status
 
     def attach_runner(self, runner: TestRunner) -> None:
-        """Attach the TestRunner instance used to execute this task."""
+        """Attach the TestRunner while it is executing and snapshot its public config."""
         with self._lock:
             self.runner = runner
+            self.config_payload = {
+                "TestBed": deepcopy(self.config.get("TestBed")),
+                "TestSet": deepcopy(self.config.get("TestSet")),
+            }
+
+    def capture_runner_result(self, runner: TestRunner) -> Dict:
+        """Persist a detached result snapshot before releasing the runner reference."""
+        try:
+            details = _to_public_payload(runner.get_test_instances_details())
+            if not isinstance(details, dict):
+                details = {}
+        except Exception:
+            logger.exception("读取任务结果失败: %s", self.task_id)
+            details = {}
+
+        try:
+            progress = round(float(runner._calculate_progress()), 2)
+        except (AttributeError, TypeError, ValueError):
+            progress = self.progress
+
+        with self._lock:
+            self.result_details = details
+            self.progress = progress
+        return details
+
+    def release_runner(self, runner: Optional[TestRunner] = None) -> None:
+        """Release the live runner after result details have been saved."""
+        with self._lock:
+            if runner is None or self.runner is runner:
+                self.runner = None
+
+    @property
+    def duration(self) -> float:
+        """Elapsed wall time in seconds, live while running and fixed after finish."""
+        with self._lock:
+            if self.start_time is None:
+                return 0.0
+            end = self.end_time or datetime.now()
+            return round(max(0.0, (end - self.start_time).total_seconds()), 3)
 
     def is_expired(self, cutoff: datetime) -> bool:
         """Check retention under the same lock used for state transitions."""
@@ -81,31 +163,47 @@ class TestTask:
         return self.progress
 
     def to_dict(self) -> Dict:
-        """Return the same result payload for pending, running and terminal tasks."""
+        """Return consistent task metadata and JSON-safe results for every lifecycle state."""
         with self._lock:
             runner = self.runner
-            task_status = self.status
+            task_status = self._status.value
             error = self.error
             start_time = self.start_time
             end_time = self.end_time
             created_at = self.created_at
-            config = self.config
+            result_details = deepcopy(self.result_details)
+            config_payload = deepcopy(self.config_payload)
+            progress = self.progress
 
-        test_instances = runner.get_test_instances_details() if runner else {}
-        config_payload = {}
-        if runner:
-            config_payload = {
-                "TestBed": config.get("TestBed"),
-                "TestSet": config.get("TestSet"),
-            }
+        if runner is not None:
+            try:
+                test_instances = _to_public_payload(runner.get_test_instances_details())
+            except Exception:
+                logger.exception("读取运行中任务结果失败: %s", self.task_id)
+                test_instances = result_details
+            try:
+                progress = round(float(runner._calculate_progress()), 2)
+            except (AttributeError, TypeError, ValueError):
+                pass
+        else:
+            test_instances = result_details
+
+        duration = 0.0
+        if start_time is not None:
+            duration_end = end_time or datetime.now()
+            duration = round(max(0.0, (duration_end - start_time).total_seconds()), 3)
+        terminal_status = task_status in {status.value for status in TERMINAL_TASK_STATUSES}
+        if terminal_status:
+            progress = 100.0
 
         return {
             "task_id": self.task_id,
             "status": task_status,
-            "progress": self._current_progress(),
+            "progress": progress,
             "created_at": created_at.isoformat(timespec="seconds"),
             "start_time": start_time.isoformat(timespec="seconds") if start_time else None,
             "end_time": end_time.isoformat(timespec="seconds") if end_time else None,
+            "duration": duration,
             "error": error,
             "config": config_payload,
             "test_instances": test_instances,
@@ -189,13 +287,14 @@ def submit_test_task(config: Dict, params=None) -> str:
 
 
 def run_test_task(task_id: str, params=None) -> None:
-    """Execute one task and always record a terminal status."""
+    """Execute one task, snapshot its result, and release runner resources."""
     task_manager = TestTaskManager()
     task = task_manager.get_task(task_id)
     if task is None:
         logger.error("任务不存在: %s", task_id)
         return
 
+    runner = None
     try:
         task.transition(TaskStatus.RUNNING)
         runner = TestRunner(config=task.config, params=params)
@@ -205,17 +304,22 @@ def run_test_task(task_id: str, params=None) -> None:
         final_status = status_from_runner(
             getattr(runner, "test_set_status", None)
         )
-        runner_error = getattr(runner, "test_set_error", None)
+        details = task.capture_runner_result(runner)
         task.transition(
             final_status,
-            error=runner_error if final_status == TaskStatus.ERROR else None,
+            error=_failure_summary(final_status, runner, details),
         )
     except Exception as exc:
+        if runner is not None:
+            task.capture_runner_result(runner)
         try:
             task.transition(TaskStatus.ERROR, error=exc)
         except InvalidTaskTransition:
             logger.exception("任务已进入终态，无法再次更新状态: %s", task_id)
         logger.error("任务执行失败: %s", exc, exc_info=True)
+    finally:
+        if runner is not None:
+            task.release_runner(runner)
 
 
 def execute_test_task(assessment_config):
