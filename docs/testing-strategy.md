@@ -10,7 +10,7 @@
 | 组件/集成测试 | 验证 Flask app factory、ConfigLoader、Mock API 与 TestRunner 之间的组合行为 | `tests/test_app_factory.py`、`tests/test_config_loader.py`、`tests/test_mock_api_demo.py` | 使用内存配置、临时 YAML 或本地 Mock API，不访问真实业务服务 |
 | 真实环境回归 | 验证私有业务系统、真实账号、真实 MySQL schema、异步业务状态和生产接近数据 | **当前没有纳入默认 CI** | 需要专用、获授权的测试环境和独立测试数据 |
 
-`tests/test_mock_api_demo.py` 不只是 Mock API 的 Flask test client 检查。它还启动一个只绑定到本机回环地址的临时 HTTP 服务，再调用真实 `TestRunner` 运行 5 个示例用例。因此它能验证用例发现、步骤注册、HTTP 请求、断言、步骤/用例状态和执行汇总的串联行为；但它不是对私有业务系统的端到端回归。
+`tests/test_mock_api_demo.py` 不只是 Mock API 的 Flask test client 检查。它还启动一个只绑定到本机回环地址的临时 HTTP 服务，通过 `submit_test_task()` 调用真实任务服务和 `TestRunner` 运行 5 个示例用例，并验证生成的 HTML 报告。因此它能验证用例发现、步骤注册、HTTP 请求、断言、步骤/用例状态和执行汇总的串联行为；但它不是对私有业务系统的端到端回归。
 
 ## 2. 可复现的测试命令
 
@@ -105,6 +105,8 @@ ruff check TestRunner/core/TestRunner.py TestRunner/services/DataBaseClient.py a
 3. 编译 Mock API 示例目录。
 4. 使用 Ruff 的 `E4/E7/E9/F` 规则检查所列关键模块、Mock API 和测试目录（当前配置忽略 `F401`）。
 5. 执行完整 `pytest` 测试集。
+6. 直接执行一次 `python examples/mock_api/run_demo.py --report-path reports/mock-api-demo-report.html`，核验任务终态、完整用例/步骤输出和报告生成。
+7. 将该 Python 版本生成的 `reports/mock-api-demo-report.html` 上传为 CI artifact，保留 14 天供下载检查。
 
 当前 CI 没有启动真实 MySQL，也不会向私有业务系统发出请求。因此，CI 通过代表隔离测试和静态检查通过，不代表已经完成真实业务环境验收。凡涉及 schema 兼容、登录态、异步算法、跨服务状态、权限和测试数据恢复的变更，仍应在专用且获授权的集成环境中验证，并记录环境和实际结果。
 
