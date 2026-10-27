@@ -418,11 +418,28 @@ class DataBaseClient:
         condition_sql, bound_condition_params = self._prepare_condition(
             condition, condition_params, required=True
         )
-        set_clause = ", ".join(
-            f"{self._quote_identifier(key, '字段名')} = %s" for key in data
-        )
+        if isinstance(bound_condition_params, dict):
+            # PyMySQL does not allow mixing positional and named placeholders in
+            # one statement, so convert SET values to generated named parameters.
+            prefix = "__set_value_"
+            while any(f"{prefix}{index}" in bound_condition_params for index in range(len(data))):
+                prefix = f"_{prefix}"
+            set_items = []
+            params = dict(bound_condition_params)
+            for index, (key, value) in enumerate(data.items()):
+                param_name = f"{prefix}{index}"
+                set_items.append(
+                    f"{self._quote_identifier(key, '字段名')} = %({param_name})s"
+                )
+                params[param_name] = value
+            set_clause = ", ".join(set_items)
+        else:
+            set_clause = ", ".join(
+                f"{self._quote_identifier(key, '字段名')} = %s" for key in data
+            )
+            params = tuple(data.values()) + tuple(bound_condition_params or ())
+
         sql = f"UPDATE {table_sql} SET {set_clause} WHERE {condition_sql}"
-        params = tuple(data.values()) + tuple(bound_condition_params or ())
         return self.execute_update(sql, params)
 
     def delete(
